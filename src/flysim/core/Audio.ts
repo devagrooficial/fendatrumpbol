@@ -40,6 +40,7 @@ class AudioEngine {
 
   private ensureContext(): AudioContext | null {
     if (!this.enabled) return null;
+    if (typeof window === 'undefined') return null;
     if (!this.ctx) {
       const Ctor: AudioContextCtor | undefined =
         window.AudioContext ?? (window as unknown as { webkitAudioContext?: AudioContextCtor }).webkitAudioContext;

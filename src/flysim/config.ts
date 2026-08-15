@@ -78,7 +78,7 @@ export const SCENERY = {
 
 export const CHECKPOINT = {
   COUNT: 8,
-  RADIUS: 22,
+  RADIUS: 34,
   TOUR_RADIUS_MIN: 260,
   TOUR_RADIUS_MAX: 900,
   ALTITUDE_MIN: 40,

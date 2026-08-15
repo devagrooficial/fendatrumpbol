@@ -320,6 +320,11 @@ button {
   transition: transform 120ms linear;
 }
 
+.hud__checkpoint-vertical {
+  font-size: 0.85rem;
+  color: #bdf3ff;
+}
+
 .hud__compass-needle {
   display: inline-flex;
   transition: transform 100ms linear;

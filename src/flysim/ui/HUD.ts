@@ -15,6 +15,7 @@ export class HUD {
   private readonly checkpointEl: HTMLDivElement;
   private readonly checkpointArrowEl: HTMLSpanElement;
   private readonly checkpointDistanceEl: HTMLSpanElement;
+  private readonly checkpointVerticalEl: HTMLSpanElement;
   private readonly stallWarningEl: HTMLDivElement;
   private readonly game: Game;
 
@@ -57,6 +58,7 @@ export class HUD {
         <span class="hud__icon hud__checkpoint-arrow" data-checkpoint-arrow>${ICON_ARROW}</span>
         <span class="hud__icon">${ICON_CHECKPOINT}</span>
         <span data-checkpoint-distance></span>
+        <span class="hud__checkpoint-vertical" data-checkpoint-vertical></span>
       </div>
       <div class="hud__stall" data-stall-warning>ESTOL</div>
     `;
@@ -72,11 +74,12 @@ export class HUD {
     const checkpointEl = this.root.querySelector<HTMLDivElement>('[data-checkpoint]');
     const checkpointArrowEl = this.root.querySelector<HTMLSpanElement>('[data-checkpoint-arrow]');
     const checkpointDistanceEl = this.root.querySelector<HTMLSpanElement>('[data-checkpoint-distance]');
+    const checkpointVerticalEl = this.root.querySelector<HTMLSpanElement>('[data-checkpoint-vertical]');
     const stallWarningEl = this.root.querySelector<HTMLDivElement>('[data-stall-warning]');
     const pauseButton = this.root.querySelector<HTMLButtonElement>('[data-pause]');
     if (
       !scoreEl || !speedEl || !altitudeEl || !headingEl || !headingNeedleEl || !throttleBarEl || !fuelBarEl || !fuelRowEl ||
-      !checkpointEl || !checkpointArrowEl || !checkpointDistanceEl || !stallWarningEl || !pauseButton
+      !checkpointEl || !checkpointArrowEl || !checkpointDistanceEl || !checkpointVerticalEl || !stallWarningEl || !pauseButton
     ) {
       throw new Error('Markup do HUD incompleto');
     }
@@ -91,6 +94,7 @@ export class HUD {
     this.checkpointEl = checkpointEl;
     this.checkpointArrowEl = checkpointArrowEl;
     this.checkpointDistanceEl = checkpointDistanceEl;
+    this.checkpointVerticalEl = checkpointVerticalEl;
     this.stallWarningEl = stallWarningEl;
 
     pauseButton.addEventListener('click', onPauseClick);
@@ -120,6 +124,13 @@ export class HUD {
       this.checkpointDistanceEl.textContent = `${Math.round(info.distance)} m`;
       const rotationDeg = (info.bearing * 180) / Math.PI;
       this.checkpointArrowEl.style.transform = `rotate(${rotationDeg}deg)`;
+
+      const verticalAbs = Math.round(Math.abs(info.verticalDelta));
+      if (verticalAbs < 5) {
+        this.checkpointVerticalEl.textContent = '';
+      } else {
+        this.checkpointVerticalEl.textContent = info.verticalDelta > 0 ? `▲${verticalAbs}m` : `▼${verticalAbs}m`;
+      }
     } else {
       this.checkpointEl.classList.remove('hud__checkpoint--visible');
     }
