@@ -36,7 +36,7 @@ export class Input {
   private stickTouchId: number | null = null;
   private throttleTouchDirection: ThrottleDirection = 0;
 
-  constructor(target: HTMLElement, listener: ActionListener) {
+  constructor(listener: ActionListener) {
     this.listener = listener;
     window.addEventListener('keydown', this.handleKeyDown);
     window.addEventListener('keyup', this.handleKeyUp);
@@ -46,10 +46,14 @@ export class Input {
     this.stick = ui.stick;
     document.body.appendChild(this.root);
 
+    // touchmove/touchend continuam "presos" ao elemento onde o touch começou
+    // (o próprio manípulo do joystick) — nunca borbulham pro canvas, que é
+    // um irmão na árvore, não um ancestral. Por isso escutam em `window` e
+    // filtram pelo identifier, em vez de escutar no `target`.
     ui.base.addEventListener('touchstart', this.handleStickStart, { passive: true });
-    target.addEventListener('touchmove', this.handleStickMove, { passive: true });
-    target.addEventListener('touchend', this.handleStickEnd, { passive: true });
-    target.addEventListener('touchcancel', this.handleStickEnd, { passive: true });
+    window.addEventListener('touchmove', this.handleStickMove, { passive: true });
+    window.addEventListener('touchend', this.handleStickEnd, { passive: true });
+    window.addEventListener('touchcancel', this.handleStickEnd, { passive: true });
 
     ui.throttleUp.addEventListener('touchstart', () => (this.throttleTouchDirection = 1), { passive: true });
     ui.throttleUp.addEventListener('touchend', () => (this.throttleTouchDirection = 0), { passive: true });

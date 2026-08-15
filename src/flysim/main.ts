@@ -25,7 +25,7 @@ renderer.shadowMap.enabled = true;
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
 const game = new Game(window.innerWidth / window.innerHeight);
-const input = new Input(canvas, (action) => game.handleAction(action));
+const input = new Input((action) => game.handleAction(action));
 
 function startOrRestart(): void {
   game.reset();
