@@ -21,11 +21,6 @@ export type GameOverReason = 'fuel' | 'crash' | null;
 
 const UP = new THREE.Vector3(0, 1, 0);
 
-function smoothstep(t: number): number {
-  const c = Math.min(1, Math.max(0, t));
-  return c * c * (3 - 2 * c);
-}
-
 /** Máquina de estados do Fly Simulator — mesmo padrão do runner, física/mundo próprios. */
 export class Game {
   readonly environment: Environment;
@@ -182,21 +177,24 @@ export class Game {
   /**
    * Câmera terceira-pessoa que segue posição/direção com lag, ignorando o
    * rolamento do avião (mais jogável) — exceto perto de voo vertical, onde
-   * o `lookAt` com "up" do mundo degenera (pisca/trava); nessa faixa mistura
-   * gradualmente o "up" do próprio avião pra evitar a instabilidade.
+   * o `lookAt` com "up" do mundo degenera (pisca/trava). Nessa faixa troca a
+   * referência de "up" pro `upVector` do próprio avião: por construção ele é
+   * sempre perpendicular ao `forwardVector` (mesma base ortonormal do
+   * quaternion), então nunca é paralelo à direção da câmera — ao contrário
+   * da tentativa anterior de misturar os dois vetores por um fator só, que
+   * podia interpolar exatamente entre dois vetores opostos (durante um loop
+   * completo, de cabeça pra baixo) e passar por um vetor de comprimento
+   * zero no meio do caminho, travando a câmera de verdade.
    */
   private updateCamera(): void {
     this.updateCameraTargets();
     this.camera.position.lerp(this.desiredCameraPos, CAMERA.FOLLOW_LERP);
 
-    const verticalAlignment = Math.abs(this.aircraft.forwardVector.y);
-    const blend = smoothstep(
-      (verticalAlignment - CAMERA.UP_BLEND_START) / (CAMERA.UP_BLEND_END - CAMERA.UP_BLEND_START),
-    );
-    this.tmpUp.set(0, 1, 0);
-    if (blend > 0) this.tmpUp.lerp(this.aircraft.upVector, blend).normalize();
-    this.cameraUp.lerp(this.tmpUp, 0.2);
-    this.camera.up.copy(this.cameraUp);
+    const forward = this.aircraft.forwardVector;
+    this.tmpUp.copy(Math.abs(forward.dot(UP)) > CAMERA.UP_REFERENCE_SWITCH_DOT ? this.aircraft.upVector : UP);
+    this.cameraUp.lerp(this.tmpUp, CAMERA.UP_SMOOTHING);
+    if (this.cameraUp.lengthSq() < 1e-6) this.cameraUp.copy(this.tmpUp);
+    this.camera.up.copy(this.cameraUp).normalize();
     this.camera.lookAt(this.lookTarget);
   }
 

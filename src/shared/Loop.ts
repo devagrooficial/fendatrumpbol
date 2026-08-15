@@ -37,16 +37,26 @@ export class Loop {
   private tick = (now: number): void => {
     if (!this.running) return;
 
-    const frameTime = Math.min((now - this.lastTime) / 1000, 0.25);
-    this.lastTime = now;
-    this.accumulator += frameTime;
+    // Um erro não tratado dentro de update/render normalmente pararia o
+    // requestAnimationFrame pra sempre (a linha que reagenda nunca seria
+    // alcançada), travando a tela no último frame bom. O try/catch garante
+    // que o loop sempre continua rodando mesmo se um frame falhar.
+    try {
+      const frameTime = Math.min((now - this.lastTime) / 1000, 0.25);
+      this.lastTime = now;
+      this.accumulator += frameTime;
 
-    while (this.accumulator >= this.fixedTimestep) {
-      this.update(this.fixedTimestep);
-      this.accumulator -= this.fixedTimestep;
+      while (this.accumulator >= this.fixedTimestep) {
+        this.update(this.fixedTimestep);
+        this.accumulator -= this.fixedTimestep;
+      }
+
+      this.render(this.accumulator / this.fixedTimestep);
+    } catch (error) {
+      console.error('[Loop] erro num frame — seguindo pro próximo', error);
+      this.accumulator = 0;
     }
 
-    this.render(this.accumulator / this.fixedTimestep);
     this.rafId = requestAnimationFrame(this.tick);
   };
 }

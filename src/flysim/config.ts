@@ -41,10 +41,11 @@ export const CAMERA = {
   FOLLOW_LERP: 0.08,
   ROTATE_LERP: 0.06,
   // Perto de voo vertical (nariz reto pra cima/baixo) o `lookAt` com "up" do
-  // mundo degenera (trava/pisca) — nessa faixa a câmera mistura o "up" do
-  // próprio avião pra evitar o problema, sempre voltando ao normal fora dela.
-  UP_BLEND_START: 0.8,
-  UP_BLEND_END: 0.97,
+  // mundo degenera (trava/pisca) — acima desse |dot(forward, mundoUp)| a
+  // câmera troca a referência de "up" pro próprio avião (sempre perpendicular
+  // ao forward por construção, nunca degenera), com transição suavizada.
+  UP_REFERENCE_SWITCH_DOT: 0.82,
+  UP_SMOOTHING: 0.15,
 };
 
 export const TERRAIN = {
