@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { COLLISION, JUMP, SLIDE, TRACK } from '../config';
+import { COLLISION, JUMP, PLAYER_JUICE, SLIDE, TRACK } from '../config';
 import { Track, type Lane } from '../world/Track';
 import type { AABB } from '../systems/Collision';
 import { CHARACTER_PRESETS, DEFAULT_CHARACTER, type CharacterId } from './characters';
@@ -46,10 +46,14 @@ export class Player {
   private readonly leftArmPivot: THREE.Group;
   private readonly rightArmPivot: THREE.Group;
   private readonly headMaterial: THREE.MeshStandardMaterial;
+  private readonly handMaterial: THREE.MeshStandardMaterial;
   private readonly hairMaterial: THREE.MeshStandardMaterial;
   private readonly shortHair: THREE.Mesh;
   private readonly longHair: THREE.Mesh;
   private character: CharacterId = DEFAULT_CHARACTER;
+
+  private impactScale = 1;
+  private impactTimer = 0;
 
   private lane: Lane = 0;
   private targetLane: Lane = 0;
@@ -102,6 +106,9 @@ export class Player {
     this.longHair.castShadow = true;
     this.bodyGroup.add(this.shortHair, this.longHair);
 
+    const shoeMaterial = new THREE.MeshStandardMaterial({ color: 0x0d0d14 });
+    const shoeGeometry = new THREE.BoxGeometry(0.17, 0.1, 0.26);
+
     const leftLeg = buildLimb(0x151a2e, LEG_LENGTH, 0.11, HIP_Y);
     leftLeg.pivot.position.x = -0.16;
     const rightLeg = buildLimb(0x151a2e, LEG_LENGTH, 0.11, HIP_Y);
@@ -110,6 +117,16 @@ export class Player {
     this.rightLegPivot = rightLeg.pivot;
     this.bodyGroup.add(leftLeg.pivot, rightLeg.pivot);
 
+    for (const legPivot of [leftLeg.pivot, rightLeg.pivot]) {
+      const shoe = new THREE.Mesh(shoeGeometry, shoeMaterial);
+      shoe.position.set(0, -LEG_LENGTH, 0.05);
+      shoe.castShadow = true;
+      legPivot.add(shoe);
+    }
+
+    this.handMaterial = new THREE.MeshStandardMaterial({ color: 0xffe08a });
+    const handGeometry = new THREE.SphereGeometry(0.09, 8, 8);
+
     const leftArm = buildLimb(0x2f6bff, ARM_LENGTH, 0.08, SHOULDER_Y);
     leftArm.pivot.position.x = -0.42;
     const rightArm = buildLimb(0x2f6bff, ARM_LENGTH, 0.08, SHOULDER_Y);
@@ -117,6 +134,13 @@ export class Player {
     this.leftArmPivot = leftArm.pivot;
     this.rightArmPivot = rightArm.pivot;
     this.bodyGroup.add(leftArm.pivot, rightArm.pivot);
+
+    for (const armPivot of [leftArm.pivot, rightArm.pivot]) {
+      const hand = new THREE.Mesh(handGeometry, this.handMaterial);
+      hand.position.y = -ARM_LENGTH;
+      hand.castShadow = true;
+      armPivot.add(hand);
+    }
 
     this.group.position.x = Track.laneToX(this.lane);
     this.group.position.y = this.groundY;
@@ -129,6 +153,7 @@ export class Player {
     const preset = CHARACTER_PRESETS[id];
     this.character = id;
     this.headMaterial.color.setHex(preset.skinColor);
+    this.handMaterial.color.setHex(preset.skinColor);
     this.hairMaterial.color.setHex(preset.hairColor);
     this.shortHair.visible = preset.hairStyle === 'short';
     this.longHair.visible = preset.hairStyle === 'long';
@@ -213,6 +238,7 @@ export class Player {
     if (this.vertical !== 'grounded' || this.isSliding) return false;
     this.vertical = 'jumping';
     this.vy = JUMP.INITIAL_VY;
+    this.triggerImpact(PLAYER_JUICE.TAKEOFF_STRETCH_SCALE);
     return true;
   }
 
@@ -258,14 +284,23 @@ export class Player {
 
     this.invulnerableTimer = 0;
     this.runPhase = 0;
+    this.impactScale = 1;
+    this.impactTimer = 0;
 
     this.group.position.set(Track.laneToX(0), this.groundY, 0);
     this.bodyGroup.scale.y = 1;
     this.bodyGroup.rotation.x = 0;
+    this.bodyGroup.rotation.z = 0;
     this.leftLegPivot.rotation.x = 0;
     this.rightLegPivot.rotation.x = 0;
     this.leftArmPivot.rotation.x = 0;
     this.rightArmPivot.rotation.x = 0;
+  }
+
+  /** Dispara um impulso curto de squash/stretch que decai de volta ao normal. */
+  private triggerImpact(scale: number): void {
+    this.impactScale = scale;
+    this.impactTimer = PLAYER_JUICE.IMPACT_DURATION_S;
   }
 
   private beginLaneChange(target: Lane): void {
@@ -289,7 +324,11 @@ export class Player {
     const eased = easeOutQuad(t);
     this.group.position.x = THREE.MathUtils.lerp(this.laneChangeFromX, this.laneChangeToX, eased);
 
+    const direction = Math.sign(this.laneChangeToX - this.laneChangeFromX);
+    this.bodyGroup.rotation.z = Math.sin(t * Math.PI) * PLAYER_JUICE.LANE_LEAN_ANGLE * direction;
+
     if (t >= 1) {
+      this.bodyGroup.rotation.z = 0;
       this.lane = this.targetLane;
       this.isChangingLane = false;
       const queued = this.queuedLaneDelta;
@@ -310,6 +349,7 @@ export class Player {
       this.currentY = this.groundY;
       this.vy = 0;
       this.vertical = 'grounded';
+      this.triggerImpact(PLAYER_JUICE.LAND_SQUASH_SCALE);
       if (this.pendingSlideOnLand) {
         this.pendingSlideOnLand = false;
         this.startSlide();
@@ -331,7 +371,13 @@ export class Player {
 
   private updateAnimation(dt: number): void {
     const crouch = this.isSliding ? SLIDE.HITBOX_HEIGHT_SCALE : 1;
-    this.bodyGroup.scale.y = THREE.MathUtils.lerp(this.bodyGroup.scale.y, crouch, 0.35);
+
+    if (this.impactTimer > 0) {
+      this.impactTimer = Math.max(0, this.impactTimer - dt);
+    }
+    const impactBlend = this.impactTimer / PLAYER_JUICE.IMPACT_DURATION_S;
+    const scaleTarget = THREE.MathUtils.lerp(crouch, this.impactScale, impactBlend);
+    this.bodyGroup.scale.y = THREE.MathUtils.lerp(this.bodyGroup.scale.y, scaleTarget, 0.35);
     this.bodyGroup.rotation.x = THREE.MathUtils.lerp(
       this.bodyGroup.rotation.x,
       this.isSliding ? -0.9 : 0,

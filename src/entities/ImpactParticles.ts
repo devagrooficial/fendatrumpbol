@@ -32,9 +32,12 @@ export class ImpactParticles {
     }
   }
 
-  /** Dispara ~6 partículas do pool a partir de `origin`, na cor dada. */
-  burst(origin: THREE.Vector3, color: number): void {
-    const count = 6;
+  /**
+   * Dispara partículas do pool a partir de `origin`, na cor dada.
+   * `spread` encolhe velocidade/alcance — usado pra sparkles de coleta
+   * (mais discretos) vs. o burst de impacto padrão (mais explosivo).
+   */
+  burst(origin: THREE.Vector3, color: number, count = 6, spread = 1): void {
     for (let i = 0; i < count; i++) {
       const particle = this.particles[this.cursor];
       this.cursor = (this.cursor + 1) % this.particles.length;
@@ -47,8 +50,8 @@ export class ImpactParticles {
       particle.mesh.position.y += 0.6;
 
       const angle = Math.random() * Math.PI * 2;
-      const speed = 2 + Math.random() * 2.5;
-      particle.velocity.set(Math.cos(angle) * speed, 2.5 + Math.random() * 2, Math.sin(angle) * speed);
+      const speed = (2 + Math.random() * 2.5) * spread;
+      particle.velocity.set(Math.cos(angle) * speed, (2.5 + Math.random() * 2) * spread, Math.sin(angle) * speed);
       particle.life = 0;
       particle.maxLife = 0.4 + Math.random() * 0.3;
     }

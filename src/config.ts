@@ -56,6 +56,18 @@ export const POWERUP = {
 
 export const SCORE = {
   COIN_VALUE: 10,
+  GEM_VALUE: 50,
+};
+
+export const PLAYER_JUICE = {
+  LAND_SQUASH_SCALE: 0.72,
+  TAKEOFF_STRETCH_SCALE: 1.18,
+  IMPACT_DURATION_S: 0.15,
+  LANE_LEAN_ANGLE: 0.22,
+};
+
+export const BIOME = {
+  SWITCH_DISTANCE: 900,
 };
 
 // "Frente" do jogo é -Z (orientação padrão do three.js: câmera sem rotação
@@ -85,6 +97,7 @@ export const FIXED_TIMESTEP_S = 1 / 60;
 export const STORAGE_KEYS = {
   HIGHSCORE: 'fendaneon.highscore',
   TOTAL_COINS: 'fendaneon.totalCoins',
+  TOTAL_GEMS: 'fendaneon.totalGems',
   SOUND_ENABLED: 'fendaneon.soundEnabled',
   CHARACTER: 'fendaneon.character',
   PLAYER_NAME: 'fendaneon.playerName',

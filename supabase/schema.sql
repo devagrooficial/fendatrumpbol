@@ -8,6 +8,7 @@ create table if not exists public.leaderboard (
   score integer not null check (score >= 0),
   distance integer not null default 0 check (distance >= 0),
   coins integer not null default 0 check (coins >= 0),
+  gems integer not null default 0 check (gems >= 0),
   character_id text not null default 'mulher-loira',
   created_at timestamptz not null default now()
 );

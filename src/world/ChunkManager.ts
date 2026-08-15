@@ -4,13 +4,18 @@ import { Track } from './Track';
 import { isSolvable, pickPattern, repairPattern, type ChunkPattern, type ChunkSlot } from './chunks';
 import { Obstacle } from '../entities/Obstacle';
 import { Coin } from '../entities/Coin';
+import { Gem } from '../entities/Gem';
 import { PowerUp, type PowerUpType } from '../entities/PowerUp';
 import { intersects, type AABB } from '../systems/Collision';
+import type { BiomePreset } from './biomes';
 
 const MAX_OBSTACLES_PER_CHUNK = 6;
 const MAX_COINS_PER_CHUNK = 12;
+const MAX_GEMS_PER_CHUNK = 4;
 const COIN_HEIGHT = 1.0;
 const COIN_SPACING = 1.2;
+const GEM_HEIGHT = 1.1;
+const GEM_SPACING = 0.9;
 const GROUND_WIDTH = 8;
 
 /**
@@ -28,6 +33,7 @@ class ChunkInstance {
   readonly group: THREE.Group;
   private readonly obstacles: Obstacle[] = [];
   private readonly coins: Coin[] = [];
+  private readonly gems: Gem[] = [];
   private readonly powerUp: PowerUp;
 
   constructor(
@@ -63,6 +69,12 @@ class ChunkInstance {
       this.group.add(coin.group);
     }
 
+    for (let i = 0; i < MAX_GEMS_PER_CHUNK; i++) {
+      const gem = new Gem();
+      this.gems.push(gem);
+      this.group.add(gem.group);
+    }
+
     this.powerUp = new PowerUp();
     this.group.add(this.powerUp.group);
   }
@@ -70,10 +82,12 @@ class ChunkInstance {
   setPattern(pattern: ChunkPattern): void {
     for (const obstacle of this.obstacles) obstacle.clear();
     for (const coin of this.coins) coin.clear();
+    for (const gem of this.gems) gem.clear();
     this.powerUp.clear();
 
     let obstacleIndex = 0;
     let coinIndex = 0;
+    let gemIndex = 0;
 
     for (const slot of pattern.slots) {
       if (
@@ -90,6 +104,8 @@ class ChunkInstance {
         coinIndex = this.placeCoinLine(slot, coinIndex);
       } else if (slot.type === 'coinArc') {
         coinIndex = this.placeCoinArc(slot, coinIndex);
+      } else if (slot.type === 'gemCluster') {
+        gemIndex = this.placeGemCluster(slot, gemIndex);
       } else if (slot.type === 'powerUp' && slot.powerUpType) {
         this.powerUp.assign(slot.powerUpType, Track.laneToX(slot.lane), 1.0, localZ(slot.z));
       }
@@ -117,9 +133,19 @@ class ChunkInstance {
     return index;
   }
 
+  private placeGemCluster(slot: ChunkSlot, startIndex: number): number {
+    const x = Track.laneToX(slot.lane);
+    let index = startIndex;
+    for (let i = 0; i < 2 && index < this.gems.length; i++, index++) {
+      this.gems[index]?.assign(x, GEM_HEIGHT, localZ(slot.z + i * GEM_SPACING));
+    }
+    return index;
+  }
+
   update(dt: number, elapsed: number): void {
     for (const obstacle of this.obstacles) obstacle.update(dt, elapsed);
     for (const coin of this.coins) coin.update(dt);
+    for (const gem of this.gems) gem.update(dt);
     this.powerUp.update(dt);
   }
 
@@ -136,6 +162,18 @@ class ChunkInstance {
       const box = coin.getWorldAABB(this.group.position.z);
       if (box && intersects(playerBox, box)) {
         coin.collect();
+        collected++;
+      }
+    }
+    return collected;
+  }
+
+  collectGemPickups(playerBox: AABB): number {
+    let collected = 0;
+    for (const gem of this.gems) {
+      const box = gem.getWorldAABB(this.group.position.z);
+      if (box && intersects(playerBox, box)) {
+        gem.collect();
         collected++;
       }
     }
@@ -159,6 +197,14 @@ class ChunkInstance {
     }
     return collected;
   }
+
+  applyMagnetToGems(playerPos: THREE.Vector3, radius: number, pullSpeed: number, dt: number): number {
+    let collected = 0;
+    for (const gem of this.gems) {
+      if (gem.applyMagnet(this.group.position.z, playerPos, radius, pullSpeed, dt)) collected++;
+    }
+    return collected;
+  }
 }
 
 /**
@@ -170,6 +216,8 @@ class ChunkInstance {
 export class ChunkManager {
   private readonly scene: THREE.Scene;
   private readonly instances: ChunkInstance[] = [];
+  private readonly groundMaterial: THREE.MeshStandardMaterial;
+  private readonly laneMaterial: THREE.MeshStandardMaterial;
   private lastPatternId: string | null = null;
   private elapsed = 0;
 
@@ -177,21 +225,28 @@ export class ChunkManager {
     this.scene = scene;
 
     const groundGeometry = new THREE.PlaneGeometry(GROUND_WIDTH, CHUNK.LENGTH);
-    const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x18102a });
+    this.groundMaterial = new THREE.MeshStandardMaterial({ color: 0x18102a });
     const laneGeometry = new THREE.PlaneGeometry(0.08, CHUNK.LENGTH);
-    const laneMaterial = new THREE.MeshStandardMaterial({
+    this.laneMaterial = new THREE.MeshStandardMaterial({
       color: 0x2f6bff,
       emissive: 0x2f6bff,
       emissiveIntensity: 1.2,
     });
 
     for (let i = 0; i < CHUNK.ACTIVE_COUNT; i++) {
-      const instance = new ChunkInstance(groundGeometry, groundMaterial, laneGeometry, laneMaterial);
+      const instance = new ChunkInstance(groundGeometry, this.groundMaterial, laneGeometry, this.laneMaterial);
       instance.group.position.z = -(i - CHUNK.BEHIND_COUNT) * CHUNK.LENGTH;
       instance.setPattern(this.drawPattern(0));
       this.scene.add(instance.group);
       this.instances.push(instance);
     }
+  }
+
+  /** Muta as cores já existentes do chão/faixas — aplica em todos os chunks de uma vez. */
+  applyBiome(preset: BiomePreset): void {
+    this.groundMaterial.color.setHex(preset.groundColor);
+    this.laneMaterial.color.setHex(preset.laneColor);
+    this.laneMaterial.emissive.setHex(preset.laneColor);
   }
 
   update(dt: number, speed: number, distance: number): void {
@@ -229,6 +284,13 @@ export class ChunkManager {
     return total;
   }
 
+  /** Coleta gemas sobrepostas pela caixa do player; retorna quantas foram pegas neste frame. */
+  checkGemPickups(playerBox: AABB): number {
+    let total = 0;
+    for (const instance of this.instances) total += instance.collectGemPickups(playerBox);
+    return total;
+  }
+
   /** Retorna o tipo do power-up pego neste frame, se algum. */
   checkPowerUpPickups(playerBox: AABB): PowerUpType | null {
     for (const instance of this.instances) {
@@ -243,6 +305,15 @@ export class ChunkManager {
     let total = 0;
     for (const instance of this.instances) {
       total += instance.applyMagnet(playerPos, radius, POWERUP.MAGNET_PULL_SPEED, dt);
+    }
+    return total;
+  }
+
+  /** Puxa gemas próximas ao player enquanto o ímã está ativo; retorna quantas foram coletadas. */
+  applyMagnetToGems(playerPos: THREE.Vector3, radius: number, dt: number): number {
+    let total = 0;
+    for (const instance of this.instances) {
+      total += instance.applyMagnetToGems(playerPos, radius, POWERUP.MAGNET_PULL_SPEED, dt);
     }
     return total;
   }

@@ -42,6 +42,17 @@ export const Storage = {
     return total;
   },
 
+  getTotalGems(): number {
+    return readNumber(STORAGE_KEYS.TOTAL_GEMS);
+  },
+
+  /** Soma ao total acumulado de gemas e retorna o novo total. */
+  addGems(amount: number): number {
+    const total = readNumber(STORAGE_KEYS.TOTAL_GEMS) + amount;
+    writeNumber(STORAGE_KEYS.TOTAL_GEMS, total);
+    return total;
+  },
+
   getSelectedCharacter(): CharacterId {
     try {
       const raw = localStorage.getItem(STORAGE_KEYS.CHARACTER);

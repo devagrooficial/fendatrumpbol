@@ -79,6 +79,10 @@ class AudioEngine {
     this.tone(1200, 0.08, 'square', 0.12, 1800);
   }
 
+  gem(): void {
+    this.tone(1800, 0.18, 'sine', 0.14, 2600);
+  }
+
   powerUp(): void {
     this.tone(600, 0.25, 'triangle', 0.18, 1200);
   }

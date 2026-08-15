@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Environment } from '../world/Environment';
 import { ChunkManager } from '../world/ChunkManager';
+import { biomeForDistance, BIOME_PRESETS, type BiomeId } from '../world/biomes';
 import { Player } from '../entities/Player';
 import type { PowerUpType } from '../entities/PowerUp';
 import type { CharacterId } from '../entities/characters';
@@ -37,10 +38,13 @@ export class Game {
   private distance = 0;
   private speed = RUN.INITIAL_SPEED;
   private coinsThisRun = 0;
+  private gemsThisRun = 0;
 
   private activePowerUp: PowerUpType | null = null;
   private powerUpDuration = 0;
   private powerUpRemaining = 0;
+  private currentBiomeId: BiomeId | null = null;
+  private boostTrailTimer = 0;
 
   constructor(aspect: number) {
     this.environment = new Environment();
@@ -107,17 +111,43 @@ export class Game {
 
     this.speed = this.activePowerUp === 'boost' ? RUN.MAX_SPEED : nextSpeed(this.speed, dt);
     this.distance += this.speed * dt;
+    this.updateBiome();
 
     this.player.update(dt);
     this.chunkManager.update(dt, this.speed, this.distance);
 
-    const coinsPicked = this.chunkManager.checkCoinPickups(this.player.getWorldAABB());
+    const playerBox = this.player.getWorldAABB();
+    const coinsPicked = this.chunkManager.checkCoinPickups(playerBox);
     const coinsPulled =
       this.activePowerUp === 'magnet'
         ? this.chunkManager.applyMagnet(this.player.position, POWERUP.MAGNET_RADIUS, dt)
         : 0;
     this.coinsThisRun += coinsPicked + coinsPulled;
-    if (coinsPicked + coinsPulled > 0) Audio.coin();
+    if (coinsPicked + coinsPulled > 0) {
+      Audio.coin();
+      this.impactParticles.burst(this.player.position, 0xffe14d, 4, 0.5);
+    }
+
+    const gemsPicked = this.chunkManager.checkGemPickups(playerBox);
+    const gemsPulled =
+      this.activePowerUp === 'magnet'
+        ? this.chunkManager.applyMagnetToGems(this.player.position, POWERUP.MAGNET_RADIUS, dt)
+        : 0;
+    this.gemsThisRun += gemsPicked + gemsPulled;
+    if (gemsPicked + gemsPulled > 0) {
+      Audio.gem();
+      this.impactParticles.burst(this.player.position, 0xbdf3ff, 5, 0.6);
+    }
+
+    if (this.activePowerUp === 'boost') {
+      this.boostTrailTimer -= dt;
+      if (this.boostTrailTimer <= 0) {
+        this.boostTrailTimer = 0.08;
+        this.impactParticles.burst(this.player.position, 0xffa83d, 1, 0.4);
+      }
+    } else {
+      this.boostTrailTimer = 0;
+    }
 
     this.checkPowerUpPickup();
 
@@ -136,6 +166,14 @@ export class Game {
       this.player.grantInvulnerability(POWERUP.BOOST_DURATION_S);
     }
     Audio.powerUp();
+  }
+
+  private updateBiome(): void {
+    const preset = biomeForDistance(this.distance);
+    if (preset.id === this.currentBiomeId) return;
+    this.currentBiomeId = preset.id;
+    this.environment.applyBiome(preset);
+    this.chunkManager.applyBiome(preset);
   }
 
   private updatePowerUpTimer(dt: number): void {
@@ -170,6 +208,7 @@ export class Game {
       this.state = GameState.GAME_OVER;
       this.isNewHighscore = Storage.setHighscoreIfBetter(this.score);
       Storage.addCoins(this.coinsThisRun);
+      Storage.addGems(this.gemsThisRun);
       Audio.gameOver();
       this.impactParticles.burst(this.player.position, 0xff4d4d);
     } else if (outcome === 'scrape') {
@@ -184,12 +223,17 @@ export class Game {
     this.distance = 0;
     this.speed = RUN.INITIAL_SPEED;
     this.coinsThisRun = 0;
+    this.gemsThisRun = 0;
     this.isNewHighscore = false;
     this.activePowerUp = null;
     this.powerUpDuration = 0;
     this.powerUpRemaining = 0;
+    this.boostTrailTimer = 0;
     this.player.reset();
     this.chunkManager.reset();
+    this.currentBiomeId = BIOME_PRESETS.canyon.id;
+    this.environment.applyBiome(BIOME_PRESETS.canyon);
+    this.chunkManager.applyBiome(BIOME_PRESETS.canyon);
     this.camera.position.set(CAMERA.OFFSET.x, CAMERA.OFFSET.y, CAMERA.OFFSET.z);
     this.camera.lookAt(CAMERA.LOOK_AT_OFFSET.x, CAMERA.LOOK_AT_OFFSET.y, CAMERA.LOOK_AT_OFFSET.z);
     this.camera.fov = CAMERA.FOV;
@@ -226,9 +270,13 @@ export class Game {
     return this.coinsThisRun;
   }
 
+  get gemsCollected(): number {
+    return this.gemsThisRun;
+  }
+
   get score(): number {
     const multiplier = this.activePowerUp === 'multiplier' ? 2 : 1;
-    return calculateScore(this.distance, this.coinsThisRun, multiplier);
+    return calculateScore(this.distance, this.coinsThisRun, this.gemsThisRun, multiplier);
   }
 
   get activePowerUpType(): PowerUpType | null {

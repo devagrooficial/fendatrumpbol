@@ -5,6 +5,7 @@ export type RankingEntry = {
   score: number;
   distance: number;
   coins: number;
+  gems: number;
   characterId: string;
 };
 
@@ -22,6 +23,7 @@ type LeaderboardRow = {
   score: number;
   distance: number;
   coins: number;
+  gems: number;
   character_id: string;
 };
 
@@ -55,6 +57,7 @@ export const Ranking = {
           score: Math.floor(entry.score),
           distance: Math.floor(entry.distance),
           coins: Math.floor(entry.coins),
+          gems: Math.floor(entry.gems),
           character_id: entry.characterId,
         }),
       });
@@ -69,7 +72,7 @@ export const Ranking = {
     if (!config) return [];
 
     try {
-      const query = `select=name,score,distance,coins,character_id&order=score.desc&limit=${limit}`;
+      const query = `select=name,score,distance,coins,gems,character_id&order=score.desc&limit=${limit}`;
       const response = await fetch(`${config.url}/rest/v1/${RANKING.TABLE}?${query}`, {
         headers: {
           apikey: config.key,
@@ -84,6 +87,7 @@ export const Ranking = {
         score: row.score,
         distance: row.distance,
         coins: row.coins,
+        gems: row.gems ?? 0,
         characterId: row.character_id,
       }));
     } catch {

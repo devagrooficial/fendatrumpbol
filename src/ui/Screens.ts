@@ -4,6 +4,7 @@ import { Audio } from '../core/Audio';
 import { Ranking, type RankingEntry } from '../core/Ranking';
 import { GAME_NAME } from '../config';
 import { CHARACTER_ORDER, CHARACTER_PRESETS, type CharacterId } from '../entities/characters';
+import { ICON_COIN, ICON_GEM, ICON_TROPHY } from './icons';
 
 function toCssHex(color: number): string {
   return `#${color.toString(16).padStart(6, '0')}`;
@@ -20,7 +21,8 @@ function escapeHtml(text: string): string {
 export class GameOverScreen {
   private readonly root: HTMLDivElement;
   private readonly scoreEl: HTMLParagraphElement;
-  private readonly coinsEl: HTMLParagraphElement;
+  private readonly coinsEl: HTMLSpanElement;
+  private readonly gemsEl: HTMLSpanElement;
   private readonly recordEl: HTMLParagraphElement;
   private readonly rankingBlock: HTMLDivElement;
   private readonly nameInput: HTMLInputElement;
@@ -40,7 +42,8 @@ export class GameOverScreen {
         <h1>Fim de jogo</h1>
         <p class="screen__record" data-record></p>
         <p class="screen__stat" data-score></p>
-        <p class="screen__stat" data-coins></p>
+        <p class="screen__stat screen__stat--icon"><span class="hud__icon">${ICON_COIN}</span><span data-coins></span></p>
+        <p class="screen__stat screen__stat--icon"><span class="hud__icon">${ICON_GEM}</span><span data-gems></span></p>
         <div class="ranking-submit" data-ranking-block>
           <input type="text" class="screen__input" data-name-input placeholder="Seu nome" maxlength="20" />
           <button type="button" class="screen__button screen__button--secondary" data-submit-score>Enviar pro ranking</button>
@@ -51,7 +54,8 @@ export class GameOverScreen {
     `;
 
     const scoreEl = this.root.querySelector<HTMLParagraphElement>('[data-score]');
-    const coinsEl = this.root.querySelector<HTMLParagraphElement>('[data-coins]');
+    const coinsEl = this.root.querySelector<HTMLSpanElement>('[data-coins]');
+    const gemsEl = this.root.querySelector<HTMLSpanElement>('[data-gems]');
     const recordEl = this.root.querySelector<HTMLParagraphElement>('[data-record]');
     const restartButton = this.root.querySelector<HTMLButtonElement>('[data-restart]');
     const rankingBlock = this.root.querySelector<HTMLDivElement>('[data-ranking-block]');
@@ -59,13 +63,14 @@ export class GameOverScreen {
     const submitButton = this.root.querySelector<HTMLButtonElement>('[data-submit-score]');
     const submitStatus = this.root.querySelector<HTMLParagraphElement>('[data-submit-status]');
     if (
-      !scoreEl || !coinsEl || !recordEl || !restartButton ||
+      !scoreEl || !coinsEl || !gemsEl || !recordEl || !restartButton ||
       !rankingBlock || !nameInput || !submitButton || !submitStatus
     ) {
       throw new Error('Markup do GameOverScreen incompleto');
     }
     this.scoreEl = scoreEl;
     this.coinsEl = coinsEl;
+    this.gemsEl = gemsEl;
     this.recordEl = recordEl;
     this.rankingBlock = rankingBlock;
     this.nameInput = nameInput;
@@ -97,6 +102,7 @@ export class GameOverScreen {
       score: this.game.score,
       distance: this.game.distanceTravelled,
       coins: this.game.coinsCollected,
+      gems: this.game.gemsCollected,
       characterId: this.game.player.characterId,
     });
 
@@ -120,7 +126,8 @@ export class GameOverScreen {
     if (!visible) return;
 
     this.scoreEl.textContent = `Score: ${this.game.score}`;
-    this.coinsEl.textContent = `Moedas: ${this.game.coinsCollected}`;
+    this.coinsEl.textContent = ` Moedas: ${this.game.coinsCollected}`;
+    this.gemsEl.textContent = ` Gemas: ${this.game.gemsCollected}`;
     this.recordEl.textContent = this.game.isNewHighscore ? 'Novo recorde!' : '';
     this.recordEl.classList.toggle('screen__record--visible', this.game.isNewHighscore);
 
@@ -136,8 +143,9 @@ export class GameOverScreen {
 /** Tela inicial: título, seleção de personagem, jogar, ranking, highscore, moedas totais e toggle de som. */
 export class MenuScreen {
   private readonly root: HTMLDivElement;
-  private readonly highscoreEl: HTMLParagraphElement;
-  private readonly totalCoinsEl: HTMLParagraphElement;
+  private readonly highscoreEl: HTMLSpanElement;
+  private readonly totalCoinsEl: HTMLSpanElement;
+  private readonly totalGemsEl: HTMLSpanElement;
   private readonly soundToggle: HTMLButtonElement;
   private readonly rankingButton: HTMLButtonElement;
   private readonly characterCards: HTMLButtonElement[];
@@ -163,8 +171,9 @@ export class MenuScreen {
     this.root.innerHTML = `
       <div class="screen__panel">
         <h1>${GAME_NAME}</h1>
-        <p class="screen__stat" data-highscore></p>
-        <p class="screen__stat" data-total-coins></p>
+        <p class="screen__stat screen__stat--icon"><span class="hud__icon">${ICON_TROPHY}</span><span data-highscore></span></p>
+        <p class="screen__stat screen__stat--icon"><span class="hud__icon">${ICON_COIN}</span><span data-total-coins></span></p>
+        <p class="screen__stat screen__stat--icon"><span class="hud__icon">${ICON_GEM}</span><span data-total-gems></span></p>
         <div class="character-select" data-character-select>${cardsMarkup}</div>
         <button type="button" class="screen__button" data-play>Jogar</button>
         <button type="button" class="screen__button screen__button--secondary" data-ranking>Ranking</button>
@@ -172,16 +181,18 @@ export class MenuScreen {
       </div>
     `;
 
-    const highscoreEl = this.root.querySelector<HTMLParagraphElement>('[data-highscore]');
-    const totalCoinsEl = this.root.querySelector<HTMLParagraphElement>('[data-total-coins]');
+    const highscoreEl = this.root.querySelector<HTMLSpanElement>('[data-highscore]');
+    const totalCoinsEl = this.root.querySelector<HTMLSpanElement>('[data-total-coins]');
+    const totalGemsEl = this.root.querySelector<HTMLSpanElement>('[data-total-gems]');
     const playButton = this.root.querySelector<HTMLButtonElement>('[data-play]');
     const rankingButton = this.root.querySelector<HTMLButtonElement>('[data-ranking]');
     const soundToggle = this.root.querySelector<HTMLButtonElement>('[data-sound]');
-    if (!highscoreEl || !totalCoinsEl || !playButton || !rankingButton || !soundToggle) {
+    if (!highscoreEl || !totalCoinsEl || !totalGemsEl || !playButton || !rankingButton || !soundToggle) {
       throw new Error('Markup do MenuScreen incompleto');
     }
     this.highscoreEl = highscoreEl;
     this.totalCoinsEl = totalCoinsEl;
+    this.totalGemsEl = totalGemsEl;
     this.soundToggle = soundToggle;
     this.rankingButton = rankingButton;
     this.characterCards = Array.from(this.root.querySelectorAll<HTMLButtonElement>('[data-character]'));
@@ -233,8 +244,9 @@ export class MenuScreen {
     this.root.classList.toggle('screen--visible', visible);
     if (!visible) return;
 
-    this.highscoreEl.textContent = `Recorde: ${Storage.getHighscore()}`;
-    this.totalCoinsEl.textContent = `Moedas totais: ${Storage.getTotalCoins()}`;
+    this.highscoreEl.textContent = ` Recorde: ${Storage.getHighscore()}`;
+    this.totalCoinsEl.textContent = ` Moedas totais: ${Storage.getTotalCoins()}`;
+    this.totalGemsEl.textContent = ` Gemas totais: ${Storage.getTotalGems()}`;
   }
 }
 
@@ -346,6 +358,7 @@ export class RankingScreen {
       <div class="ranking-row">
         <span class="ranking-row__pos">${index + 1}</span>
         <span class="ranking-row__name">${escapeHtml(entry.name)}</span>
+        <span class="ranking-row__gems">${entry.gems > 0 ? `${ICON_GEM} ${entry.gems}` : ''}</span>
         <span class="ranking-row__score">${entry.score}</span>
       </div>
     `).join('');

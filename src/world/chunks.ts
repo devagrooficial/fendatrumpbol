@@ -12,6 +12,7 @@ export type ChunkSlotType =
   | 'movingBlock'
   | 'coinLine'
   | 'coinArc'
+  | 'gemCluster'
   | 'powerUp'
   | 'empty';
 
@@ -170,6 +171,7 @@ export const CHUNK_PATTERNS: ChunkPattern[] = [
     slots: [
       { z: 16, lane: 0, type: 'lowBar' },
       { z: 6, lane: -1, type: 'coinLine' },
+      { z: 24, lane: 1, type: 'gemCluster' },
     ],
   },
   {
@@ -186,6 +188,7 @@ export const CHUNK_PATTERNS: ChunkPattern[] = [
     slots: [
       { z: 15, lane: -1, type: 'barrier' },
       { z: 8, lane: 1, type: 'coinLine' },
+      { z: 22, lane: -1, type: 'gemCluster' },
     ],
   },
 
@@ -197,6 +200,7 @@ export const CHUNK_PATTERNS: ChunkPattern[] = [
       { z: 8, lane: 0, type: 'barrier' },
       { z: 20, lane: 1, type: 'lowBar' },
       { z: 8, lane: -1, type: 'coinLine' },
+      { z: 26, lane: -1, type: 'gemCluster' },
     ],
   },
   {
@@ -246,6 +250,7 @@ export const CHUNK_PATTERNS: ChunkPattern[] = [
       { z: 8, lane: 1, type: 'barrier' },
       { z: 16, lane: -1, type: 'highBar' },
       { z: 24, lane: 0, type: 'movingBlock', toLane: 1 },
+      { z: 27, lane: -1, type: 'gemCluster' },
     ],
   },
   {
@@ -302,6 +307,7 @@ export const CHUNK_PATTERNS: ChunkPattern[] = [
       { z: 18, lane: -1, type: 'wall' },
       { z: 18, lane: 0, type: 'wall' },
       { z: 24, lane: 0, type: 'movingBlock', toLane: 1 },
+      { z: 28, lane: 1, type: 'gemCluster' },
     ],
   },
   {
@@ -371,6 +377,7 @@ export const CHUNK_PATTERNS: ChunkPattern[] = [
     id: 'd5-final-gauntlet',
     difficulty: 5,
     slots: [
+      { z: 3, lane: 0, type: 'gemCluster' },
       { z: 6, lane: -1, type: 'barrier' },
       { z: 6, lane: 1, type: 'barrier' },
       { z: 13, lane: -1, type: 'wall' },

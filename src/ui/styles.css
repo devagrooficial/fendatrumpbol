@@ -100,6 +100,19 @@ button {
   font-size: 1.1rem;
 }
 
+.screen__stat--icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.hud__icon {
+  display: inline-flex;
+  align-items: center;
+  font-size: 1.15em;
+  line-height: 1;
+}
+
 .screen__button {
   margin-top: 0.5rem;
   padding: 0.7rem 1.6rem;
@@ -227,10 +240,34 @@ button {
   color: #22e5ff;
 }
 
-.hud__coins {
+.hud__stat {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
   font-size: 1.1rem;
   color: #ffe08a;
   text-shadow: 0 0 8px rgba(255, 224, 138, 0.6);
+}
+
+.hud__stat--gem {
+  color: #bdf3ff;
+  text-shadow: 0 0 8px rgba(189, 243, 255, 0.6);
+}
+
+@keyframes hud-pulse {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.3);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.hud__stat--pulse {
+  animation: hud-pulse 300ms ease;
 }
 
 .hud__right {
@@ -241,6 +278,9 @@ button {
 
 .hud__pause {
   pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   padding: 0.35rem 0.8rem;
   font-size: 0.8rem;
   font-weight: 600;
@@ -344,7 +384,7 @@ button {
 
 .ranking-row {
   display: grid;
-  grid-template-columns: 2rem 1fr auto;
+  grid-template-columns: 2rem 1fr auto auto;
   gap: 0.5rem;
   align-items: center;
   padding: 0.4rem 0.6rem;
@@ -364,6 +404,14 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ranking-row__gems {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  color: #bdf3ff;
+  font-size: 0.8rem;
 }
 
 .ranking-row__score {
