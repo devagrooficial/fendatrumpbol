@@ -122,9 +122,10 @@ export class Game {
       return;
     }
 
-    if (this.checkpoints.checkPass(this.aircraft.position)) {
-      this.checkpointsPassedTotal++;
-      this.fuel = Math.min(this.fuel + CHECKPOINT.FUEL_BONUS_S, FUEL.START_S * 2);
+    const checkpointsPassedThisFrame = this.checkpoints.checkPass(this.aircraft.position);
+    if (checkpointsPassedThisFrame > 0) {
+      this.checkpointsPassedTotal += checkpointsPassedThisFrame;
+      this.fuel = Math.min(this.fuel + CHECKPOINT.FUEL_BONUS_S * checkpointsPassedThisFrame, FUEL.START_S * 2);
       Audio.checkpoint();
     }
 
@@ -229,7 +230,7 @@ export class Game {
 
   /** Distância, rumo relativo (rad, 0 = na frente, + = à direita) e diferença de altitude até o próximo checkpoint — usado pela seta do HUD. */
   get nextCheckpointInfo(): { distance: number; bearing: number; verticalDelta: number } | null {
-    const target = this.checkpoints.nextTarget;
+    const target = this.checkpoints.nearestTarget(this.aircraft.position);
     if (!target) return null;
 
     const pos = this.aircraft.position;
