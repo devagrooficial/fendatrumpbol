@@ -21,6 +21,11 @@ export type GameOverReason = 'fuel' | 'crash' | null;
 
 const UP = new THREE.Vector3(0, 1, 0);
 
+function smoothstep(t: number): number {
+  const c = Math.min(1, Math.max(0, t));
+  return c * c * (3 - 2 * c);
+}
+
 /** Máquina de estados do Fly Simulator — mesmo padrão do runner, física/mundo próprios. */
 export class Game {
   readonly environment: Environment;
@@ -39,6 +44,8 @@ export class Game {
 
   private readonly desiredCameraPos = new THREE.Vector3();
   private readonly lookTarget = new THREE.Vector3();
+  private readonly cameraUp = new THREE.Vector3(0, 1, 0);
+  private readonly tmpUp = new THREE.Vector3();
 
   constructor(aspect: number) {
     this.environment = new Environment();
@@ -99,6 +106,8 @@ export class Game {
   private snapCameraToAircraft(): void {
     this.updateCameraTargets();
     this.camera.position.copy(this.desiredCameraPos);
+    this.cameraUp.set(0, 1, 0);
+    this.camera.up.copy(this.cameraUp);
     this.camera.lookAt(this.lookTarget);
   }
 
@@ -170,10 +179,24 @@ export class Game {
     this.lookTarget.copy(this.aircraft.position).addScaledVector(this.aircraft.forwardVector, CAMERA.LOOK_AHEAD);
   }
 
-  /** Câmera terceira-pessoa que segue posição/direção com lag, mas ignora o rolamento do avião (mais jogável). */
+  /**
+   * Câmera terceira-pessoa que segue posição/direção com lag, ignorando o
+   * rolamento do avião (mais jogável) — exceto perto de voo vertical, onde
+   * o `lookAt` com "up" do mundo degenera (pisca/trava); nessa faixa mistura
+   * gradualmente o "up" do próprio avião pra evitar a instabilidade.
+   */
   private updateCamera(): void {
     this.updateCameraTargets();
     this.camera.position.lerp(this.desiredCameraPos, CAMERA.FOLLOW_LERP);
+
+    const verticalAlignment = Math.abs(this.aircraft.forwardVector.y);
+    const blend = smoothstep(
+      (verticalAlignment - CAMERA.UP_BLEND_START) / (CAMERA.UP_BLEND_END - CAMERA.UP_BLEND_START),
+    );
+    this.tmpUp.set(0, 1, 0);
+    if (blend > 0) this.tmpUp.lerp(this.aircraft.upVector, blend).normalize();
+    this.cameraUp.lerp(this.tmpUp, 0.2);
+    this.camera.up.copy(this.cameraUp);
     this.camera.lookAt(this.lookTarget);
   }
 

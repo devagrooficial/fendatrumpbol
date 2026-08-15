@@ -17,9 +17,8 @@ export const FLIGHT = {
   PITCH_RATE: 1.1, // rad/s no manche todo pra frente/trás
   ROLL_RATE: 2.0, // rad/s no manche todo pra os lados
   YAW_RATE: 0.6, // rad/s no leme
-  TURN_RATE_FROM_ROLL: 0.9, // guinada induzida pela inclinação (curva coordenada)
-  PITCH_LIMIT: 1.15, // ~66°, evita looping instável
-  ROLL_DAMPING: 2.2, // retorno automático do rolamento quando solto
+  TURN_RATE_FROM_ROLL: 1.25, // guinada induzida pela inclinação (curva coordenada)
+  ROLL_DAMPING: 1.7, // retorno automático do rolamento quando solto
   MAX_CLIMB_ANGLE_FOR_SPEED: 0.05, // afeta o quanto o ângulo de subida contribui na vel. vertical
 };
 
@@ -41,6 +40,11 @@ export const CAMERA = {
   LOOK_AHEAD: 8,
   FOLLOW_LERP: 0.08,
   ROTATE_LERP: 0.06,
+  // Perto de voo vertical (nariz reto pra cima/baixo) o `lookAt` com "up" do
+  // mundo degenera (trava/pisca) — nessa faixa a câmera mistura o "up" do
+  // próprio avião pra evitar o problema, sempre voltando ao normal fora dela.
+  UP_BLEND_START: 0.8,
+  UP_BLEND_END: 0.97,
 };
 
 export const TERRAIN = {
@@ -73,7 +77,7 @@ export const SCENERY = {
 
 export const CHECKPOINT = {
   COUNT: 8,
-  RADIUS: 14,
+  RADIUS: 22,
   TOUR_RADIUS_MIN: 260,
   TOUR_RADIUS_MAX: 900,
   ALTITUDE_MIN: 40,

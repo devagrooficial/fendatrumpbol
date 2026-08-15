@@ -33,6 +33,12 @@ export const ICON_PAUSE =
   '<rect x="14" y="4" width="4" height="16" rx="1"/>' +
   '</svg>';
 
+export const ICON_COMPASS =
+  '<svg viewBox="0 0 24 24" width="1em" height="1em" xmlns="http://www.w3.org/2000/svg">' +
+  '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/>' +
+  '<path d="M15.5 8.5 13 13l-4.5 2.5L11 11l4.5-2.5Z" fill="currentColor"/>' +
+  '</svg>';
+
 export const ICON_ARROW =
   '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" xmlns="http://www.w3.org/2000/svg">' +
   '<path d="M12 2 5 21l7-4 7 4L12 2Z"/>' +

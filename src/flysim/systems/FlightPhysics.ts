@@ -49,3 +49,12 @@ export function stallSinkRate(factor: number, maxSinkSpeed: number): number {
 export function turnRateFromRoll(roll: number, turnRateFactor: number): number {
   return Math.sin(roll) * turnRateFactor;
 }
+
+/** Reduz um ângulo (rad) para (-π, π] — evita crescimento sem limite e faz o auto-nivelamento decair pro lado mais perto em vez de sempre voltar pro zero "absoluto". */
+export function wrapAngle(angle: number): number {
+  const twoPi = Math.PI * 2;
+  let wrapped = angle % twoPi;
+  if (wrapped > Math.PI) wrapped -= twoPi;
+  if (wrapped <= -Math.PI) wrapped += twoPi;
+  return wrapped;
+}

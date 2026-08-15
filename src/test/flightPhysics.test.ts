@@ -5,6 +5,7 @@ import {
   stallPitchBias,
   stallSinkRate,
   turnRateFromRoll,
+  wrapAngle,
   type FlightConfig,
 } from '../flysim/systems/FlightPhysics';
 
@@ -68,6 +69,29 @@ describe('stallPitchBias / stallSinkRate', () => {
   it('máximo quando o estol é total (fator 0)', () => {
     expect(stallPitchBias(0, 1.4)).toBe(1.4);
     expect(stallSinkRate(0, 9)).toBe(9);
+  });
+});
+
+describe('wrapAngle', () => {
+  it('não mexe em ângulos já dentro de (-π, π]', () => {
+    expect(wrapAngle(0)).toBeCloseTo(0, 10);
+    expect(wrapAngle(1)).toBeCloseTo(1, 10);
+    expect(wrapAngle(-1)).toBeCloseTo(-1, 10);
+    expect(wrapAngle(Math.PI)).toBeCloseTo(Math.PI, 10);
+  });
+
+  it('traz de volta ângulos de voltas completas (permite loop/roll sem limite)', () => {
+    expect(wrapAngle(Math.PI * 2)).toBeCloseTo(0, 10);
+    expect(wrapAngle(Math.PI * 3)).toBeCloseTo(Math.PI, 10);
+    expect(wrapAngle(-Math.PI * 2)).toBeCloseTo(0, 10);
+  });
+
+  it('sempre retorna um valor em (-π, π]', () => {
+    for (let i = -20; i <= 20; i++) {
+      const wrapped = wrapAngle(i * 1.3);
+      expect(wrapped).toBeGreaterThan(-Math.PI - 1e-9);
+      expect(wrapped).toBeLessThanOrEqual(Math.PI + 1e-9);
+    }
   });
 });
 

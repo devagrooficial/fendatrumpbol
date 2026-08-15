@@ -320,6 +320,11 @@ button {
   transition: transform 120ms linear;
 }
 
+.hud__compass-needle {
+  display: inline-flex;
+  transition: transform 100ms linear;
+}
+
 .hud__stall {
   margin-top: 0.2rem;
   padding: 0.25rem 0.9rem;

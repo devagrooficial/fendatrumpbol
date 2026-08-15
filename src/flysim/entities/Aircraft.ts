@@ -6,6 +6,7 @@ import {
   stallPitchBias,
   stallSinkRate,
   turnRateFromRoll,
+  wrapAngle,
   type FlightConfig,
 } from '../systems/FlightPhysics';
 
@@ -207,17 +208,16 @@ export class Aircraft {
   update(dt: number, axes: FlightAxes): void {
     this.roll += axes.roll * FLIGHT.ROLL_RATE * dt;
     if (Math.abs(axes.roll) < 0.02) {
-      this.roll -= this.roll * Math.min(1, FLIGHT.ROLL_DAMPING * dt);
+      this.roll -= wrapAngle(this.roll) * Math.min(1, FLIGHT.ROLL_DAMPING * dt);
     }
-    this.roll = clamp(this.roll, -Math.PI * 0.85, Math.PI * 0.85);
+    this.roll = wrapAngle(this.roll);
 
     const factor = stallFactor(this.airspeed, FLIGHT.STALL_SPEED);
     const bias = stallPitchBias(factor, FLIGHT.STALL_MAX_PITCH_BIAS);
-    this.pitch += axes.pitch * FLIGHT.PITCH_RATE * dt - bias * dt;
-    this.pitch = clamp(this.pitch, -FLIGHT.PITCH_LIMIT, FLIGHT.PITCH_LIMIT);
+    this.pitch = wrapAngle(this.pitch + axes.pitch * FLIGHT.PITCH_RATE * dt - bias * dt);
 
     const yawFromRoll = turnRateFromRoll(this.roll, FLIGHT.TURN_RATE_FROM_ROLL);
-    this.yaw += (axes.yaw * FLIGHT.YAW_RATE + yawFromRoll) * dt;
+    this.yaw = wrapAngle(this.yaw + (axes.yaw * FLIGHT.YAW_RATE + yawFromRoll) * dt);
 
     this.airspeed = integrateAirspeed(this.airspeed, this.throttle, this.pitch, dt, FLIGHT_CONFIG);
 
@@ -279,5 +279,11 @@ export class Aircraft {
 
   get yawAngle(): number {
     return this.yaw;
+  }
+
+  /** Rumo em graus (0..360) só pro mostrador de bússola do HUD — não tem "norte" de verdade, é relativo à orientação inicial. */
+  get headingDegrees(): number {
+    const degrees = (-this.yaw * 180) / Math.PI;
+    return ((degrees % 360) + 360) % 360;
   }
 }
