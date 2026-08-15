@@ -9,7 +9,17 @@ import './ui/styles.css';
 const canvas = document.querySelector<HTMLCanvasElement>('#app');
 if (!canvas) throw new Error('Canvas #app não encontrado');
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+let renderer: THREE.WebGLRenderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+} catch {
+  const message = document.createElement('div');
+  message.className = 'webgl-error';
+  message.textContent =
+    'Não foi possível iniciar o WebGL neste navegador. Tenta abrir num navegador atualizado (Safari ou Chrome).';
+  document.body.appendChild(message);
+  throw new Error('WebGL indisponível');
+}
 renderer.shadowMap.enabled = true;
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
@@ -44,6 +54,8 @@ function resize(): void {
   game.camera.updateProjectionMatrix();
 }
 window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 100));
+window.visualViewport?.addEventListener('resize', resize);
 resize();
 
 document.addEventListener('visibilitychange', () => {

@@ -2,8 +2,15 @@ html, body {
   margin: 0;
   padding: 0;
   overflow: hidden;
+  overscroll-behavior: none;
   background: #000;
   height: 100%;
+  height: 100dvh;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
   font-family: 'Segoe UI', system-ui, sans-serif;
 }
 
@@ -11,7 +18,24 @@ html, body {
   display: block;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   touch-action: none;
+}
+
+button {
+  touch-action: manipulation;
+}
+
+.webgl-error {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  text-align: center;
+  color: #fdf6ff;
+  font-size: 1rem;
 }
 
 .credits {
@@ -269,11 +293,14 @@ html, body {
   width: 100%;
   box-sizing: border-box;
   padding: 0.55rem 0.8rem;
-  font-size: 0.95rem;
+  font-size: 16px; /* abaixo disso o Safari iOS dá zoom automático ao focar */
   color: #fdf6ff;
   background: rgba(253, 246, 255, 0.08);
   border: 1px solid rgba(253, 246, 255, 0.3);
   border-radius: 0.6rem;
+  touch-action: manipulation;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .screen__input:focus {
