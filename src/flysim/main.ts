@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { Game, GameState } from './core/Game';
-import { Loop } from './shared/Loop';
+import { Loop } from '../shared/Loop';
 import { Input } from './core/Input';
-import { GameOverScreen, MenuScreen, PauseScreen, RankingScreen } from './ui/Screens';
+import { GameOverScreen, MenuScreen, PauseScreen } from './ui/Screens';
 import { HUD } from './ui/HUD';
 import { FIXED_TIMESTEP_S } from './config';
 import './ui/styles.css';
@@ -25,21 +25,13 @@ renderer.shadowMap.enabled = true;
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
 const game = new Game(window.innerWidth / window.innerHeight);
-new Input(canvas, (action) => game.handleAction(action));
-
-function logSceneStats(): void {
-  if (import.meta.env.DEV) {
-    console.log(`[dev] scene.children.length = ${game.environment.scene.children.length}`);
-  }
-}
+const input = new Input(canvas, (action) => game.handleAction(action));
 
 function startOrRestart(): void {
   game.reset();
-  logSceneStats();
 }
 
-const rankingScreen = new RankingScreen(() => {});
-const menuScreen = new MenuScreen(game, startOrRestart, () => void rankingScreen.open());
+const menuScreen = new MenuScreen(game, startOrRestart);
 const gameOverScreen = new GameOverScreen(game, startOrRestart);
 const pauseScreen = new PauseScreen(
   game,
@@ -65,7 +57,7 @@ document.addEventListener('visibilitychange', () => {
 
 const loop = new Loop(
   FIXED_TIMESTEP_S,
-  (dt) => game.update(dt),
+  (dt) => game.update(dt, input.getAxes(), input.getThrottleDirection()),
   () => {
     renderer.render(game.environment.scene, game.camera);
     menuScreen.sync();

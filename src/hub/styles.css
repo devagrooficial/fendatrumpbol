@@ -1,0 +1,103 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  min-height: 100dvh;
+  background: #0a0414;
+  color: #fdf6ff;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.hub {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2.5rem;
+  padding: 2rem 1.5rem;
+  text-align: center;
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(47, 107, 255, 0.18), transparent 60%),
+    radial-gradient(ellipse at 75% 80%, rgba(255, 168, 61, 0.14), transparent 55%);
+}
+
+.hub__title {
+  margin: 0;
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: #2f6bff;
+  text-shadow: 0 0 16px rgba(47, 107, 255, 0.6);
+}
+
+.hub__grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1.5rem;
+}
+
+.game-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+  width: 220px;
+  padding: 1.75rem 1.25rem;
+  background: rgba(24, 12, 40, 0.75);
+  border: 1px solid rgba(253, 246, 255, 0.15);
+  border-radius: 1.25rem;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.game-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(47, 107, 255, 0.5);
+  box-shadow: 0 10px 30px rgba(47, 107, 255, 0.2);
+}
+
+.game-card__icon {
+  width: 64px;
+  height: 64px;
+  color: #2f6bff;
+}
+
+.game-card--flysim .game-card__icon {
+  color: #ffa83d;
+}
+
+.game-card__title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.game-card__desc {
+  margin: 0;
+  font-size: 0.8rem;
+  color: rgba(253, 246, 255, 0.6);
+}
+
+.game-card__play {
+  margin-top: 0.4rem;
+  padding: 0.5rem 1.4rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #0a0414;
+  background: #2f6bff;
+  border-radius: 999px;
+}
+
+.game-card--flysim .game-card__play {
+  background: #ffa83d;
+}
+
+.hub__credits {
+  margin: 0;
+  font-size: 0.75rem;
+  color: rgba(253, 246, 255, 0.35);
+}

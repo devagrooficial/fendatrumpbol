@@ -1,21 +1,22 @@
-import { FIXED_TIMESTEP_S } from '../config';
-
 export type UpdateFn = (dt: number) => void;
 export type RenderFn = (alpha: number) => void;
 
 /**
  * Acumulador de passo fixo: desacopla a simulação do refresh rate do monitor,
- * evitando que a física (velocidade, gravidade) varie com o FPS.
+ * evitando que a física (velocidade, gravidade) varie com o FPS. Genérico —
+ * reaproveitado por qualquer jogo do site, sem depender do config de nenhum.
  */
 export class Loop {
   private accumulator = 0;
   private lastTime = 0;
   private running = false;
   private rafId = 0;
+  private readonly fixedTimestep: number;
   private readonly update: UpdateFn;
   private readonly render: RenderFn;
 
-  constructor(update: UpdateFn, render: RenderFn) {
+  constructor(fixedTimestepSeconds: number, update: UpdateFn, render: RenderFn) {
+    this.fixedTimestep = fixedTimestepSeconds;
     this.update = update;
     this.render = render;
   }
@@ -40,12 +41,12 @@ export class Loop {
     this.lastTime = now;
     this.accumulator += frameTime;
 
-    while (this.accumulator >= FIXED_TIMESTEP_S) {
-      this.update(FIXED_TIMESTEP_S);
-      this.accumulator -= FIXED_TIMESTEP_S;
+    while (this.accumulator >= this.fixedTimestep) {
+      this.update(this.fixedTimestep);
+      this.accumulator -= this.fixedTimestep;
     }
 
-    this.render(this.accumulator / FIXED_TIMESTEP_S);
+    this.render(this.accumulator / this.fixedTimestep);
     this.rafId = requestAnimationFrame(this.tick);
   };
 }

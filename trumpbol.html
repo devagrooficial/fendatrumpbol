@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Fenda do TrumpBol</title>
+    <style>
+      .back-link {
+        position: fixed;
+        top: 0.75rem;
+        left: 0.75rem;
+        z-index: 30;
+        padding: 0.4rem 0.8rem;
+        font: 700 0.8rem 'Segoe UI', system-ui, sans-serif;
+        color: #fdf6ff;
+        text-decoration: none;
+        background: rgba(24, 12, 40, 0.7);
+        border: 1px solid rgba(253, 246, 255, 0.35);
+        border-radius: 999px;
+      }
+      .back-link:hover {
+        background: rgba(24, 12, 40, 0.9);
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="app"></canvas>
+    <a href="/" class="back-link">← Jogos</a>
+    <footer class="credits">Feito por: Mateus Almeida</footer>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
