@@ -673,3 +673,40 @@ mudança do que o pedido, que era só tirar isso dessas duas telas.
 Testado ao vivo: menu sem o rodapé de anúncio, modal de fim de jogo sem o
 banner. `npx tsc --noEmit` limpo, 152/152 testes passando (nenhum teste
 dependia da renderização desses dois slots nessas telas especificamente).
+
+## 16. Tremedeira infinita na tela de fim de jogo + som de gol
+
+O Mateus reportou o campo "tremendo" atrás do modal de fim de jogo — bug
+de verdade, achado a causa: o screen shake do gol (`render/fx.ts`,
+`shakeTimer`, decai em `SHAKE_DURATION_S` = 0.3s) só decai dentro de
+`fx.update(dt)`, chamado só quando `appScreen === 'match'` (`update()` em
+`main.ts`). Quando o gol que dá fim à partida acontece (bate
+`GOALS_TO_WIN`), `fx.triggerGoal()` arma o `shakeTimer`, mas a fase pula
+direto pra `'ended'` (sem congelamento/replay — ver `rules.ts`), o que
+troca `appScreen` pra `'endgame'` quase no mesmo instante — e a partir
+daí `fx.update()` para de rodar, então `shakeTimer` fica travado num
+valor > 0 pra sempre. O `render()`, porém, continua chamando
+`fx.getShakeOffsetPx()` a cada quadro (roda pra qualquer `appScreen`), e
+essa função gera um deslocamento aleatório novo toda vez que
+`shakeTimer > 0` — resultado: tremedeira infinita, já que o timer nunca
+chega a zero pra fazer o offset parar.
+
+Corrigido chamando `fx.reset()` no início de `endMatchFlow()` (`main.ts`)
+— zera shake/flash/trail/partículas assim que a partida termina de vez,
+antes do modal aparecer. Confirmado ao vivo: forcei o gol que bate o
+placar máximo (indo direto pra `'ended'`, o mesmo caminho do bug) e
+comparei dois screenshots da tela de fim de jogo tirados com ~0.8s de
+intervalo — pixel a pixel idênticos, sem tremedeira.
+
+Também pedido: som de gol/torcida. O `goal()` de `audio/Audio.ts` era só
+um tom + ruído curto; troquei por uma fanfarra (arpejo ascendente
+C5-E5-G5-C6, 4 notas curtas em sequência) + um "grito de torcida"
+sintetizado (`crowdCheer`: ruído filtrado passa-faixa ~1100Hz com
+crescendo de 250ms e decaimento ao longo de 1.4s, simulando a
+arquibancada reagindo). Continua tudo sintetizado via Web Audio API, sem
+nenhum arquivo de áudio — mesmo padrão do resto do jogo. Pra agendar as 4
+notas em sequência sem `setTimeout`, dei ao `tone()` um parâmetro
+`startDelay` opcional que usa `ctx.currentTime + startDelay` (agendamento
+nativo do Web Audio, preciso por sample). Não tem teste automatizado pra
+áudio (assim como o resto do `Audio.ts`); validei rodando o evento de gol
+de verdade no navegador e conferindo que não lança exceção no console.

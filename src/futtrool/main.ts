@@ -161,6 +161,14 @@ function startMatch(): void {
 }
 
 function endMatchFlow(): void {
+  // A partir daqui `update()` para de chamar `fx.update(dt)` (só roda com
+  // appScreen === 'match'), então o shakeTimer do último gol ficaria
+  // travado num valor > 0 pra sempre — e o render() continua chamando
+  // `fx.getShakeOffsetPx()` a cada quadro, gerando um offset aleatório
+  // novo (tremedeira infinita) em vez de decair. Zera os efeitos aqui pra
+  // a tela de fim de jogo ficar parada.
+  fx.reset();
+
   const outcome: MatchOutcome = state.result === 'p1' ? 'win' : state.result === 'p2' ? 'loss' : 'draw';
   const reward = calculateMatchReward(outcome, state.score.p1, progression.winStreak);
   const levelAfter = applyXp(

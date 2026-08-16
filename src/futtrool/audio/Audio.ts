@@ -49,24 +49,28 @@ class AudioEngine {
     return this.ctx;
   }
 
-  private tone(freq: number, duration: number, type: OscillatorType, peakGain: number, glideTo?: number): void {
+  // `startDelay` (segundos, a partir de agora) permite agendar notas em
+  // sequência (arpejo) sem depender de setTimeout — o Web Audio já é feito
+  // pra agendar no próprio relógio do contexto, com precisão de sample.
+  private tone(freq: number, duration: number, type: OscillatorType, peakGain: number, glideTo?: number, startDelay = 0): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
+    const startTime = ctx.currentTime + startDelay;
 
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = type;
-    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    osc.frequency.setValueAtTime(freq, startTime);
     if (glideTo !== undefined) {
-      osc.frequency.exponentialRampToValueAtTime(Math.max(glideTo, 1), ctx.currentTime + duration);
+      osc.frequency.exponentialRampToValueAtTime(Math.max(glideTo, 1), startTime + duration);
     }
-    gain.gain.setValueAtTime(0, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(peakGain, ctx.currentTime + 0.008);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+    gain.gain.setValueAtTime(0, startTime);
+    gain.gain.linearRampToValueAtTime(peakGain, startTime + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
 
     osc.connect(gain).connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + duration + 0.02);
+    osc.start(startTime);
+    osc.stop(startTime + duration + 0.02);
   }
 
   private noiseBurst(duration: number, peakGain: number, filterFreq: number): void {
@@ -118,9 +122,49 @@ class AudioEngine {
     this.tone(900, 0.35, 'square', 0.14, 500);
   }
 
+  // Gol (spec seção 12, "feedback exagerado"): fanfarra curta (arpejo
+  // ascendente C5-E5-G5-C6) + "grito de torcida" — ruído filtrado com
+  // crescendo/decrescimo simulando um rugido de arquibancada. Sem sample
+  // de áudio, tudo sintetizado, igual ao resto do jogo.
   goal(): void {
-    this.tone(660, 0.5, 'sawtooth', 0.16, 220);
-    this.noiseBurst(0.6, 0.06, 2400);
+    const notes: [freq: number, delay: number][] = [
+      [523.25, 0], // C5
+      [659.25, 0.09], // E5
+      [783.99, 0.18], // G5
+      [1046.5, 0.27], // C6
+    ];
+    for (const [freq, delay] of notes) {
+      this.tone(freq, 0.22, 'square', 0.14, undefined, delay);
+    }
+    this.crowdCheer(1.4, 0.22);
+  }
+
+  private crowdCheer(duration: number, peakGain: number): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+
+    const bufferSize = Math.floor(ctx.sampleRate * duration);
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 1100;
+    filter.Q.value = 0.6;
+
+    const gain = ctx.createGain();
+    const now = ctx.currentTime;
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(peakGain, now + 0.25); // crescendo, tipo torcida reagindo
+    gain.gain.linearRampToValueAtTime(peakGain * 0.7, now + duration * 0.6);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+    source.connect(filter).connect(gain).connect(ctx.destination);
+    source.start(now);
+    source.stop(now + duration + 0.05);
   }
 
   click(): void {
