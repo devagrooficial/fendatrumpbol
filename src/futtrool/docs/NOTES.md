@@ -1,0 +1,545 @@
+# FutTrool — Notas de arquitetura e referência visual
+
+Este arquivo manda sobre **onde as coisas ficam** e sobre **como a UI deve
+se parecer**. Regras de jogo (física, IA, regras de partida, economia,
+anúncios) continuam em `docs/SPEC.md` — não duplicar aqui.
+
+## 1. Adaptação da estrutura de pastas
+
+O `docs/SPEC.md` foi escrito para um monorepo `pnpm` (`packages/core` +
+`apps/web`). Este repositório é um site Vite multi-página único (ver
+`README.md` da raiz: hub + `trumpbol.html` + `flysim.html`, cada jogo com
+sua própria árvore em `src/<jogo>/`). FutTrool segue o mesmo padrão do
+`flysim`:
+
+```
+futtrool.html                      # entrada HTML na raiz (como trumpbol.html/flysim.html)
+src/futtrool/
+  main.ts                          # bootstrap
+  config.ts                        # feature flags (ex.: RUBBER_BAND)
+  core/                             # simulação PURA — equivale a packages/core da spec
+    constants.ts                   # PHYS (seção 3.4 da spec) + regras de partida (seção 4)
+    types.ts                       # Vec2, Player, Ball, GameState, Command
+    rng.ts                         # PRNG com seed (mulberry32) — nunca Math.random()
+    physics.ts                     # integração, colisões, resolução de impulso
+    rules.ts                       # kickoff, gol, tempo, fim de jogo, prorrogação
+    simulation.ts                  # step(state, commands, dt) -> state (função pura)
+    ai/
+      profiles.ts                  # tabela 5.3 (Novato/Profissional/Lenda)
+      perception.ts                # buffer de reação atrasada + previsão de interceptação
+      brain.ts                     # FSM -> Command
+  render/
+    renderer.ts                    # desenha o GameState (nunca escreve estado)
+    camera.ts                      # segue bola+jogador, zoom dinâmico, clamp
+    ads.ts                         # adManager (seção 10.5)
+    fx.ts                          # shake, partículas, trails
+  input/
+    joystick.ts                    # touch
+    keyboard.ts                    # WASD/setas + espaço/enter + shift/ctrl
+  ui/
+    screens/                       # menu, dificuldade, matchmaking, HUD, fim de jogo
+    styles.css
+  replay/
+    buffer.ts                      # buffer circular de 8s
+    player.ts                      # reprodução 0.6x
+  audio/
+  progression/
+    economy.ts                     # tabela da seção 9, xpParaNivel
+    storage.ts                     # StorageAdapter -> LocalStorageAdapter
+  transport/
+    MatchTransport.ts               # interface (seção 13, decisão 4)
+    LocalTransport.ts               # roda a simulação local + IA (entrega 1)
+  tests/ (ou src/test/futtrool-*.test.ts, ver decisão de testes abaixo)
+
+public/futtrool/
+  ads.config.json                  # ver seção 10.2 da spec (caminho adaptado)
+  ads/                              # criativos placeholder
+```
+
+## 2. Decisões de adaptação (o que diverge da spec original)
+
+| Item da spec original | Decisão neste repo | Por quê |
+|---|---|---|
+| pnpm workspaces, `packages/core` + `apps/web` | Pasta única `src/futtrool/`, com `core/` como sub-pasta pura | Repo já é um site Vite único, não monorepo. Reescrever isso não muda nenhuma regra de jogo. |
+| React para telas de menu/HUD | HTML/DOM leve sem framework, igual `flysim/ui/Screens.ts` | Padrão já usado nos outros 2 jogos do hub; não vamos introduzir uma dependência nova para isso. |
+| Howler.js | Web Audio nativo (`flysim/core/Audio.ts` como referência de padrão) | Já é o padrão do repo, zero dependência nova. |
+| Regra de lint bloqueando DOM em `packages/core` | **Sem lint automatizado por enquanto** — repo não tem ESLint configurado. A regra "sem DOM em `core/`" vale por convenção e revisão manual/code review. | Adicionar ESLint só para isso é escopo extra não pedido. Se quiser lint automatizado depois, é um passo isolado e barato de adicionar. |
+| `packages/core/tests` | `src/futtrool/tests/` — pasta própria, separada de `src/test/` (decisão de Mateus em 2026-08-16) | FutTrool tem escopo grande o suficiente (física + regras + IA) pra justificar seus próprios testes agrupados, ao invés de misturar com os do runner/flysim. |
+| `ads.config.json` na raiz de `public/` | `public/futtrool/ads.config.json` + `public/futtrool/ads/` | Evita colidir com outros jogos que também podem querer um inventário de anúncios no futuro. |
+
+As **5 decisões bloqueantes da seção 13 da spec** (core puro/determinístico,
+`Command` serializável, `GameState` serializável, `MatchTransport`
+abstraído, renderer só lê) continuam valendo exatamente como escrito —
+essas não têm nada a ver com monorepo vs. site único.
+
+## 3. Referência visual (prints enviados por Mateus em 2026-08-16)
+
+O jogo de referência mostrado nos prints confirma e detalha a seção 11 da
+spec. É host tipo Roblox (barra superior com menu/chat/inventário/Loja) —
+isso é só o chrome da plataforma de referência, **não** replicamos essa
+barra; usamos como inspiração de composição de HUD e telas. Pontos
+específicos a implementar:
+
+- **HUD de placar**: número do placar por time (cor do time) + **fileira
+  de 4 pips/bolinhas por time** que preenche a cada gol (bate com "Placar
+  visual" da seção 4), cronômetro logo abaixo, tudo centralizado no topo.
+- **Indicador de ping/região**: canto superior direito, formato
+  `REGIÃO · NNms` (ex. "LATAM · 65 ms") — placeholder estático na entrega 1
+  (sem rede de verdade), mas já reservar o espaço na HUD.
+- **Tela de matchmaking ("Buscando casual 1v1...")**: círculo central com
+  avatares dos "candidatos", contador duplo `tempo decorrido` /
+  `~tempo médio`, botão primário rosa (`Treinar` — deixa o jogador
+  aquecendo/chutando contra a parede enquanto espera), texto de sequência
+  de vitórias com 🔥 e "pote" da sequência em $ (liga com a economia da
+  seção 9: bônus de sequência), botão `Cancelar`.
+- **Transição "Partida achada! Conectando..."**: barra fina no topo com
+  contagem regressiva curta + botão `Cancelar`, mantém o ping visível.
+- **Kickoff**: avatar do jogador (círculo com bandeira/skin) com nome
+  flutuando acima (`Você` / nome do oponente), botão grande translúcido
+  `PONTAPÉ` no canto inferior direito, pílula `Menu` centralizada embaixo.
+- **Anúncios de campo**: pelo menos 2 placas grandes deitadas em cantos
+  opostos do campo (equivalente a `pitch-nw`/`pitch-sw` etc.), sempre
+  **atrás** dos jogadores/bola, nunca dentro da área do gol nem sob os
+  controles — bate 100% com a seção 10.3. Nos prints: um anúncio de outro
+  jogo ("BEATBALL — Jogue agora no Roblox") e uma marca ("LUCENTUM GAMES")
+  — ou seja, o inventário de slots deve aceitar tanto anúncio de
+  terceiro quanto branding próprio.
+- **Notificação de gol**: banner full-width com fundo escurecido,
+  "<Nome> marcou", nome+badge de dificuldade do autor do gol logo abaixo
+  numa barra colorida pelo time (ex. "Bot La Pulga" / "Lenda").
+- **Tela de replay**: rótulo `REPLAY` com bolinha vermelha piscando no
+  topo; rastro pontilhado da bola com alpha decrescente (seção 11); botão
+  flutuante `Reagir +$1` (reação social com pequena recompensa — não estava
+  na spec original; **confirmado por Mateus em 2026-08-16: entra na entrega
+  1**, junto com o resto do replay no M7); barra inferior com nome da faixa
+  tocando (`Tocando <n>`),
+  CTA de loja de música (`Comprar som $10.000` — sistema de "jukebox"
+  citado na seção 12, aqui com preço), `Salvar replay` e `Pular (x/y)`
+  com contador de pulos usados.
+- **Fim de jogo**: título `Fim de jogo`, placar grande colorido por time,
+  resultado (`Vitória`/`Derrota`/`Empate`), tabela por jogador com barra
+  de fundo na cor do time (avatar + nome + tag de dificuldade + gols +
+  assistências), **duas barras de XP empilhadas**: uma rosa mostrando o
+  ganho da partida (`+70 XP`) e uma verde mostrando o progresso atual no
+  nível (`1.710 / 2.100 XP`) — bate com "barra de XP com animação de
+  preenchimento" da seção 7, só que com o detalhe de mostrar as duas
+  barras. Botões finais `Sair +$10` (secundário) e `Mais uma! +$14`
+  (primário, rosa, com borda destacada) — o valor no botão é a moeda
+  acumulada na partida (seção 9).
+
+Essas referências não mudam nenhuma regra de física/IA/economia da spec —
+são detalhamento de camada visual (seção 11) e de UI (seção 7). Vou tratar
+isso como o alvo visual do M5/M6/M7/M8 (feel, telas, replay, anúncios).
+
+## 4. Convenção de nomes
+
+- Nome do jogo no hub e em toda UI: **FutTrool** (pt-BR). O nome
+  `arena-1v1` do documento original é só codinome interno, não aparece
+  para o jogador.
+
+## 5. Progresso
+
+- **M1 — concluído (2026-08-16).** Card no hub (`/`), `futtrool.html`,
+  `src/futtrool/main.ts` com loop de passo fixo (`src/shared/Loop.ts`,
+  reaproveitado dos outros jogos), `core/types.ts`, `core/constants.ts`
+  (`PHYS`, `FIELD`, `MATCH`, `STALL`), `core/rng.ts` (mulberry32 com seed),
+  `render/camera.ts` (mundo→tela, "fit" com letterbox) e
+  `render/renderer.ts` desenhando o campo (faixas de grama, linhas,
+  círculo central, área do gol). Testes em `src/futtrool/tests/`
+  (`rng.test.ts`, `camera.test.ts`, 8 testes). `tsc --noEmit` limpo,
+  verificado no browser em desktop e em landscape mobile (812×375).
+  - Decisão tomada durante o M1: "profundidade do gol" (seção 3.3) foi
+    interpretada como a marcação visual `área do gol` desenhada **para
+    dentro** do campo (0 a `GOAL_DEPTH` a partir da linha de fundo) — e
+    não como uma extensão da parede pra fora do campo. **Corrigido no
+    M7** (2026-08-16): o Mateus reparou, comparando com os prints de
+    referência, que a marcação fica **atrás** da linha de fundo (onde
+    fica a rede de verdade), não pra dentro do campo. `renderer.ts`
+    ajustado pra desenhar de `-GOAL_DEPTH` a `0` (e de `WIDTH` a
+    `WIDTH+GOAL_DEPTH` do outro lado) — o que também deixou o render
+    consistente com a física, que desde o M2 já tratava essa faixa como
+    *fora* do campo (`resolveWallCollision`: `leftBound = insideGoalMouth
+    ? -FIELD.GOAL_DEPTH : 0`). Antes disso render e física discordavam
+    sobre onde ficava essa área; agora concordam.
+  - `src/shared/Loop.ts` (compartilhado com trumpbol/flysim) limita o
+    frame time a 0.25s em vez do "máximo de 5 steps" literal da seção
+    3.4 — mesmo objetivo (evitar espiral da morte com a aba em
+    background), implementação levemente diferente por já ser infra
+    reaproveitada. Não é uma das 5 decisões bloqueantes da seção 13,
+    então não há necessidade de reescrever.
+- **M2 — concluído (2026-08-16).** `core/physics.ts` (movimento com
+  aceleração/arrasto/clamp, colisão círculo-círculo com impulso e
+  conservação de momento, colisão com parede incluindo o "fundo da rede"
+  na boca do gol, chute com carga por tempo segurado + alcance/cone, dash
+  com cooldown e stun) e `core/simulation.ts` (`step(state, commands, dt)`
+  puro, orquestrando tudo por tick). `input/keyboard.ts` com os dois
+  jogadores no mesmo teclado (P1: WASD/Espaço/Shift esquerdo — P2:
+  setas/Enter/Ctrl direito). `render/renderer.ts` ganhou `renderPlayer`
+  (com indicador de facing/mira e anel de carga do chute) e `renderBall`.
+  27 testes em `src/futtrool/tests/` (rng, camera, physics — conservação
+  de momento, clamp de velocidade máxima, escala do impulso do chute com a
+  carga, cooldown, dash, parede). `tsc --noEmit` limpo. Verificado
+  interativamente no browser (via eventos de teclado sintéticos, já que a
+  automação de tap simples é rápida demais pro loop de física registrar
+  "segurando"): movimento, chute acertando a bola e batendo no p2, e dash
+  em burst — tudo funcionando, sem erros no console.
+  - Dois campos foram adicionados ao `Player` além do esboço da seção 3.2
+    da spec (`dashTimer`, `kickHeldPrev`) — necessários pra `step()`
+    continuar puro sem estado externo escondido (detectar a borda de
+    soltar o chute, e deixar o arrasto dissipar o burst do dash em vez de
+    cortá-lo na hora pelo clamp de PLAYER_MAX_SPEED). Documentado como
+    comentário no próprio `types.ts`.
+  - Simplificação conhecida: o stun de dash é reaplicado a cada tick
+    enquanto os corpos estão sobrepostos (não só uma vez no impacto) —
+    efeito colateral aceitável por ora, registrado como polimento
+    pendente pro M9.
+  - Ainda não existe regra de gol/placar/cronômetro — a bola atravessa a
+    boca do gol e para no "fundo da rede" (`GOAL_DEPTH`) sem nada
+    acontecer. Isso é exatamente o escopo do M3.
+- **M3 — concluído (2026-08-16).** `core/rules.ts` (`checkGoal` com swept
+  collision, `createKickoffFormation`/`createMatchState`, `stepAntiStall`
+  da seção 3.6) e `core/simulation.ts` reescrito como máquina de fases
+  (`kickoff` → `playing` → `goal` → `kickoff` de novo, ou `ended`).
+  `step()` agora devolve `{ state, events }` — `events` é a lista de
+  acontecimentos do tick (gol, início/fim de kickoff, início de
+  prorrogação, fim de partida), efêmera, não faz parte do `GameState`
+  persistido; existe pra M5+ (áudio, replay) reagir sem comparar dois
+  estados. Extraí a matemática de vetor de `physics.ts` pra
+  `core/vec2.ts` compartilhado (rules.ts também precisava). 38 testes
+  (15 novos em `rules.test.ts`: gol em velocidade máxima, gol fora da
+  abertura, kickoff bloqueando input, fluxo completo de gol → congela →
+  kickoff, fim por `GOALS_TO_WIN`, fim por tempo, prorrogação, empate na
+  prorrogação, morte súbita, anti-degenerescência com/sem jogador perto).
+  `tsc --noEmit` limpo. Testado ao vivo no browser via um hook de depuração
+  novo (`window.__futtroolDebug`, só em `import.meta.env.DEV` — mesmo
+  padrão que a spec já prevê pra `window.__adStats` na seção 10.4):
+  forcei a bola em direção ao gol e confirmei o placar mudando, o relógio
+  seguindo contando (não reseta pós-gol), e o reset de posições pro
+  kickoff; depois forcei `score: {p2: 3}` e confirmei fim de partida com
+  "Fim — vence p2" e tudo congelando.
+  - Mais dois campos além do esboço da spec, pelo mesmo motivo dos do M2
+    (step() precisa ser pura sem estado escondido): `GameState.phaseTimer`
+    (contagem do kickoff / congelamento+replay) e `Ball.stallTimer`
+    (acumulador do anti-degenerescência).
+  - Decisão de design não explicitada na spec: o cronômetro (`timeLeftMs`)
+    só conta durante `phase === 'playing'` — pausa durante o congelamento
+    pós-gol e durante a contagem de kickoff. Pareceu mais justo (o time
+    que sofreu o gol não perde tempo de jogo pra celebração) e mais simples
+    de raciocinar. Se o Mateus preferir o cronômetro correndo sempre, é só
+    mudar onde `timeLeftMs` é decrementado em `simulation.ts`.
+  - Prorrogação não reseta posições pro kickoff (o jogo simplesmente
+    continua de onde parou quando os 3:00 acabam empatados) — só a
+    detecção de gol muda (qualquer gol encerra a partida na hora). Se
+    quiser um kickoff formal também na prorrogação, dá pra ajustar depois
+    sem quebrar nada.
+  - Duração do congelamento+replay (`MATCH.GOAL_FREEZE_MS +
+    GOAL_REPLAY_MS`) já está reservada na fase `goal`, mas ainda não existe
+    replay de verdade — a tela só fica "pausada" nesse intervalo. O
+    replay visual é o M7.
+- **M4 — concluído (2026-08-16).** `core/ai/profiles.ts` (tabela 5.3 exata:
+  Novato/Profissional/Lenda, mais `RUBBER_BAND` desligado por padrão),
+  `core/ai/perception.ts` (buffer circular com atraso de `reactionMs`,
+  previsão analítica de trajetória da bola sob arrasto pra achar o ponto
+  de interceptação) e `core/ai/brain.ts` (FSM com os 7 estados —
+  kickoff/chase/intercept/attack/defend/recover/celebrate — reavaliada a
+  cada 100ms, mais hesitação por `idleChance`, chute com carga/mira/erro/
+  chance de erro, e dash por `dashUsage`). A IA só lê o mesmo `GameState`
+  que qualquer jogador e só devolve um `Command` — mesma interface do
+  teclado, sem acesso privilegiado. Ligada em `main.ts`: P1 é humano
+  (teclado), P2 é IA (dificuldade fixa em `AI_DIFFICULTY`, já que a tela
+  de seleção é M6). 43 testes (5 novos em `ai.test.ts`, incluindo 40
+  partidas headless Novato x Lenda e 20 Novato x Profissional, sem
+  render). `tsc --noEmit` limpo. Testado ao vivo no browser: a IA saiu do
+  kickoff, perseguiu a bola (`intercept`), se posicionou atrás dela e
+  chutou — marcou um gol sozinha contra um P1 parado, e o teclado do P1
+  continuou respondendo normalmente com a IA ativa.
+  - **Bug real encontrado e corrigido durante o M4**: a mira original do
+    chute apontava direto pro gol a partir da posição do próprio jogador,
+    mas o mecanismo de chute em `physics.ts` só conecta se a bola estiver
+    dentro do cone (`KICK_ARC`) do `facing` no momento de soltar — ou seja,
+    "mirar" de verdade exige estar posicionado do lado oposto ao gol em
+    relação à bola, não só virar o corpo pro gol. Sem isso, boa parte dos
+    chutes da IA falhava em silêncio (carregava, soltava, nada acontecia).
+    Corrigido calculando um ponto de "standoff" atrás da bola (na direção
+    oposta ao alvo do chute) como destino de movimento no estado ATTACK,
+    e mirando a partir da posição da BOLA (não do jogador) em
+    `planKick`. Antes da correção, Lenda batia Novato só 45% das vezes em
+    40 partidas headless; depois, ~77% (23 vitórias, 7 derrotas, 10
+    empates) — condizente com a meta qualitativa da seção 14
+    ("perceptivelmente diferentes").
+  - O teste de balanceamento (`ai.test.ts`) usa um limiar mais frouxo
+    (65% de vitórias entre partidas decisivas, ignorando empates) do que
+    o "90%" sugerido no prompt de exemplo da seção "Como executar isso no
+    Claude Code" da spec — bot-vs-bot é um proxy imperfeito pra "vence a
+    maioria dos humanos" (a meta real, seção 5.3), e o critério de aceite
+    formal da seção 14 é qualitativo, não um número fixo. Ver comentário
+    no teste.
+  - Simplificação registrada no topo de `brain.ts`: o atraso de
+    `reactionMs` vale pra decisão estratégica (qual estado da FSM, pra
+    onde correr) — reavaliada a cada 100ms como a spec pede — mas o
+    gatilho fino de "a bola está no alcance do meu chute agora" usa a
+    posição atual de verdade, não a percebida com atraso. Do contrário a
+    IA erraria contatos triviais por um atraso que deveria afetar leitura
+    estratégica, não coordenação motora do próprio corpo.
+  - `window.__futtroolDebug` ganhou `getAiState()` além de `getState()`/
+    `setState()`.
+- **M5 — concluído (2026-08-16).** `input/joystick.ts` (`TouchInput`):
+  joystick flutuante com zona morta de 12% (Pointer Events, aparece onde o
+  dedo tocar), botão PONTAPÉ (com anel de carga) e botão de dash, cada um
+  rastreado por `pointerId` separado — dá pra mover e chutar com dois
+  dedos ao mesmo tempo. `render/camera.ts` ganhou `follow()`: segue
+  0.7 bola / 0.3 jogador com lerp 0.12, zoom dinâmico 0.9-1.3 (mistura
+  distância entre os jogadores + bola no terço final), clamp nas bordas
+  do campo — chamado no passo fixo (`update`), não no `render`, pra não
+  depender da taxa de atualização do monitor. `render/fx.ts`: rastro da
+  bola (8 posições, alpha decrescente), screen shake (0.3s/12px) e flash
+  branco no gol, partículas no chute. `audio/Audio.ts`: síntese via Web
+  Audio (mesmo padrão do `flysim/core/Audio.ts`), sem arquivo de áudio —
+  chute (intensidade pela carga), colisão bola-parede, colisão
+  jogador-jogador, dash, apito de início/fim, gol. Aviso de "gire o
+  dispositivo" via CSS (`@media (orientation: portrait) and
+  (pointer: coarse)`) em vez da Orientation Lock API (que exige tela
+  cheia). `main.ts` religado: P1 = teclado + touch combinados (o que
+  tiver mais magnitude de movimento manda; chute/dash é "ou"), eventos de
+  `step()` disparando áudio/FX. 118 testes (contagem do repo inteiro,
+  nada novo em `core/` neste marco — M5 é só camada de app/renderer,
+  fora do que `core/` cobre). `tsc --noEmit` limpo.
+  - Testado ao vivo, incluindo dois problemas reais encontrados e
+    corrigidos:
+    1. `canvas.setPointerCapture()` pode lançar `NotFoundError` sem o
+       ponteiro estar mais "ativo" — descoberto testando com eventos
+       sintéticos, mas é uma falha de borda legítima também com toque
+       real (dedo solto rápido demais). Envolvido em try/catch
+       (`trySetPointerCapture`) — a captura é só uma garantia extra, não
+       essencial.
+    2. Nenhum bug de verdade no toque em si, mas uma cilada de teste que
+       vale registrar: `window.location.reload()` via JS derruba a
+       emulação de toque do browser de teste (`navigator.maxTouchPoints`
+       volta a 0), e uma aba nova que abre sozinha ao editar HTML rouba o
+       foco da aba de teste — com a aba em segundo plano,
+       `requestAnimationFrame` praticamente para (o acumulador de passo
+       fixo do `Loop` fica represado). Nenhum dos dois é um problema do
+       jogo; documentado aqui só pra não perder tempo com isso nas
+       próximas rodadas de teste manual: sempre `navigate` (não
+       `location.reload()`) pra re-testar toque, e sempre `tabs_select`
+       pra garantir foco antes de medir qualquer coisa sensível a tempo.
+  - Confirmado via log de eventos (não só leitura de estado, que se
+    mostrou sujeita a corrida com a IA re-tocando a bola): chute do P1
+    disparando com carga cheia pelo botão touch, dash do P1 disparando
+    pelo botão touch, joystick renderizando âncora+manípulo durante o
+    arrasto.
+  - Ainda não existe seleção de tamanho do joystick nem tela de ajustes
+    (isso é M6). Música de fundo (jukebox, seção 12) ficou de fora do
+    escopo do M5 — só os SFX de evento — porque telas de menu/partida são
+    M6, e é lá que a trilha em loop faz mais sentido de entrar junto.
+- **M6 — concluído (2026-08-16).** `i18n/pt-BR.json` + `i18n/index.ts`
+  (`t(key, params)`) centralizando toda string de UI. `progression/economy.ts`
+  (tabela da seção 9, `xpForLevel`, `calculateMatchReward`, `applyXp` — só
+  vitória mantém/aumenta a sequência, decisão não explicitada na spec) e
+  `progression/storage.ts` (`StorageAdapter`/`LocalStorageAdapter`/
+  `ProgressionStore`, chave `futtrool.progression`). Quatro telas DOM
+  (`ui/screens/`, mesmo padrão do `flysim/ui/Screens.ts`): `MenuScreen`
+  (nível/moedas, Jogar, Inventário/Loja como placeholder "Em breve", toggle
+  de som), `DifficultyScreen` (3 cards coloridos por nível), `MatchmakingScreen`
+  (spinner, contador 2-4s aleatório, Cancelar) e `EndGameScreen` (placar,
+  resultado, linha por jogador, duas barras de XP animadas, sequência de
+  vitórias, botões com o valor da recompensa). `ui/hud.ts`: HUD de verdade
+  durante a partida — placar colorido + pips de 4 bolinhas por time,
+  cronômetro, indicador de ping/região placeholder (seção 7: "real só na
+  entrega 2"), avisos de kickoff/gol/prorrogação. `main.ts` ganhou a
+  máquina de estados do app inteira (`menu → difficulty → matchmaking →
+  match → endgame`), com o `Loop` sempre rodando a 60Hz mas só simulando/
+  renderizando a partida de verdade quando `appScreen === 'match'`. 126
+  testes (8 novos em `economy.test.ts`). `tsc --noEmit` limpo.
+  - Testado ao vivo o fluxo inteiro: Menu → Dificuldade (Lenda) →
+    Matchmaking (spinner + contador) → Partida (HUD com pips reais) →
+    Fim de jogo (vitória, duas barras de XP, sequência) → Mais uma!
+    (nova partida direto) → Fim de jogo de novo (subiu de nível, mostrou
+    sequência de 2) → Sair → Menu (nível e moeda atualizados). Progressão
+    confirmada persistindo em `localStorage['futtrool.progression']`
+    entre chamadas. Toggle de som persiste em
+    `localStorage['futtrool.soundEnabled']`.
+  - Durante o teste apareceu um gol contra da IA (Lenda chutou, `scorer:
+    p1` no log) depois de um chute forte + vários `ballWallBounce`. Não é
+    bug de placar — `checkGoal` tem teste unitário cobrindo os dois lados
+    (`rules.test.ts`) e a leitura mais provável é a física de verdade: um
+    chute quase no `KICK_MAX_IMPULSE` com `BALL_WALL_RESTITUTION=0.78`
+    pode ricochetear e atravessar o campo inteiro antes do arrasto
+    dissipar. Registrado aqui como comportamento emergente observado, não
+    investigado a fundo — se voltar a incomodar, é candidato a ajuste de
+    balanceamento no M9, não a correção de bug.
+  - Simplificações conscientes de escopo: sem tela de Ajustes dedicada
+    (o toggle de som mora direto no menu; tamanho do joystick e idioma
+    ficam de fora — só existe pt-BR mesmo, e o `t()` já isola isso pra
+    quando precisar); sem trilha de música em loop (só os SFX de evento
+    do M5); tabela de fim de jogo não tem coluna de assistência de
+    verdade (mostraria sempre 0 — não há rastreamento de posse/passe
+    ainda, então omiti a coluna em vez de inventar um número falso).
+- **M7 — concluído (2026-08-16).** `replay/buffer.ts` (`ReplayBuffer`:
+  buffer circular de `REPLAY.BUFFER_SECONDS`=8s a 60Hz, ~480 snapshots
+  enxutos — posição/velocidade/facing/stun, não o `GameState` inteiro),
+  `replay/player.ts` (`ReplayPlayer`: toca os snapshots a `REPLAY.SPEED`
+  da velocidade real, sem resimular nada) e `replay/storage.ts`
+  (`ReplayStore`, reaproveitando o `StorageAdapter` da progressão, chave
+  `futtrool.replays`, máximo `REPLAY.MAX_SAVED`=5). `ui/ReplayOverlay.ts`
+  (overlay transparente por cima do jogo — não é um `.screen` opaco —
+  com label "REPLAY" piscando, `Reagir +$1`, `Salvar replay`, `Pular`/
+  `Voltar` e barra de progresso) e `ui/screens/SavedReplaysScreen.ts`
+  (lista os replays salvos a partir do menu, com Assistir/Apagar).
+  `main.ts` ganhou dois estados de app novos (`replays`,
+  `watchingReplay`) e a orquestração da fase `goal`: os primeiros
+  `GOAL_FREEZE_MS` só mostram o estado ao vivo congelado, depois disso
+  entra a janela de replay de verdade (captura o clipe do buffer, toca a
+  0.6x, mostra nomes flutuando — `renderPlayerLabel`, nova em
+  `renderer.ts`). 135 testes (9 novos em `replay.test.ts`). `tsc --noEmit`
+  limpo.
+  - **Decisão de reconciliação de spec**: a seção 4 diz "replay automático
+    (2,5s)", mas a seção 8 pede 3s de conteúdo a 0.6x — o que
+    matematicamente leva 5s de relógio pra tocar, não 2,5s. Segui a
+    seção 8 (é o pilar "feedback exagerado" da seção 0, e é mais
+    específica sobre o replay em si) e derivei `MATCH.GOAL_REPLAY_MS`
+    a partir de `REPLAY.CONTENT_SECONDS/REPLAY.SPEED` em vez do número
+    solto da seção 4 — documentado com comentário em `constants.ts` pra
+    não parecer descuido. Pausa total por gol agora é 1,2s + 5s = 6,2s.
+  - **Bug real encontrado e corrigido durante o teste** (fora do escopo
+    do replay em si, achado pelo Mateus comparando com um print de
+    referência): a "área do gol" estava desenhada **para dentro** do
+    campo desde o M1, mas o certo é atrás da linha de fundo (onde fica a
+    rede de verdade) — bate com a física, que desde o M2 já tratava essa
+    faixa como fora do campo. `renderer.ts` corrigido; ver a entrada do
+    M1 atualizada acima.
+  - Testado ao vivo o fluxo inteiro, incluindo os dois locais onde é fácil
+    testar errado (documentado aqui pra não repetir): (1) o replay ao
+    vivo dura só ~6s reais por gol, curto demais pra pegar por polling
+    entre chamadas de ferramenta — resolvido rodando um `while` com
+    `await` dentro do MESMO `javascript_exec`, em vez de várias chamadas
+    separadas; (2) `Salvar replay`/`Reagir`/o clipe salvo (480 snapshots,
+    placar certo) e a tela "Replays salvos" (assistir com nomes
+    flutuando, apagar, estado vazio) — tudo confirmado funcionando.
+  - Simplificação consciente: "Reagir +$1" só existe no replay AO VIVO
+    pós-gol, não ao assistir um replay salvo depois (senão dava pra
+    farmar moeda reagindo ao mesmo clipe repetidamente). `ReplayOverlay`
+    tem um modo `'watch'` que esconde Reagir/Salvar e reaproveita o botão
+    de Pular como "Voltar".
+  - Ficou de fora (não pedido pela spec, só apareceu nos prints de
+    referência): "Comprar som $10.000" (loja de música/jukebox — precisa
+    de um sistema de trilha sonora que não existe ainda) e o contador
+    "Pular (x/2)" como limite artificial de pulos (isso seria uma
+    mecânica de monetização por gate, não algo que a seção 8 pediu).
+- **M8 — concluído (2026-08-16).** `ads/types.ts` (`AdSlotId`, `AdCreative`,
+  `AdCampaign`, `AdsConfig`, `AdEvent`), `ads/slots.ts` (geometria: 4
+  placas de campo fora das linhas de fundo — "atrás da área", nunca perto
+  da boca do gol, que fica nas laterais — mais `center-watermark`, mais os
+  tamanhos de referência dos slots de tela) e `ads/adManager.ts`
+  (`load`/`getCreative` com priority+weight/`renderFieldSlots`/
+  `renderScreenRect`/`trackFieldVisibility`/`trackDomSlotShown`+`Hidden`/
+  `onClick`/`renderBallSkin`/`renderPlayerBadge`). `camera.ts` ganhou
+  `worldRectVisibleFraction()` pra telemetria de viewable (seção 10.4).
+  `public/futtrool/ads.config.json` com uma campanha "house" cobrindo os
+  12 slots, criativos placeholder em SVG (texto, sem imagem externa).
+  Ligado em `main.ts` (fetch do config no boot, `trackFieldVisibility` a
+  cada tick, slots de campo desenhados antes de jogador/bola/FX) e nas 4
+  telas DOM que têm slot (`MenuScreen`/`MatchmakingScreen`/
+  `EndGameScreen`/`ReplayOverlay`, via um helper compartilhado
+  `ui/adSlot.ts`). 144 testes (13 novos: seleção por priority+weight com
+  `Math.random` mockado, `worldRectVisibleFraction`). `tsc --noEmit`
+  limpo.
+  - **Inconsistência real da spec, encontrada e documentada**: a seção 10
+    fala em "11 slots" (título da seção, critério de aceite da seção 14),
+    mas a tabela da seção 10.1 lista 12 linhas (pitch-nw/sw/ne/se,
+    center-watermark, scoreboard-sponsor, loading-hero, endgame-banner,
+    replay-lower-third, menu-footer, ball-skin, player-badge). Implementei
+    os 12 da tabela — ela é mais específica e é o que dá pra testar de
+    verdade, então prevalece sobre a contagem solta no texto. Se o
+    Mateus quis dizer 11 de propósito (um dos 12 sendo opcional/fora de
+    escopo), é só remover de `ads/slots.ts` e do config.
+  - Testado ao vivo: os 4 slots de campo e o watermark aparecem
+    corretamente atrás dos jogadores (com placeholder tracejado em dev
+    enquanto a imagem ainda carrega — confirmei que é só um instante,
+    não ficou preso nisso), o scoreboard aparece no HUD, o loading-hero
+    na tela de matchmaking, o endgame-banner na tela de fim de jogo (com
+    os slots de campo visíveis e meio apagados atrás do painel, herdado
+    de graça do `.screen` já ser semi-transparente), o replay-lower-third
+    durante o replay de gol, a skin da bola trocou a textura padrão pela
+    do criativo, e o emblema apareceu no canto de cada jogador. Telemetria
+    confirmada via `window.__adStats`: impression + viewable disparando
+    certo tanto pros slots de tela (timer de 1s) quanto pros de campo
+    (acumulando tempo visível de verdade via câmera, resetando quando a
+    fração cai abaixo de 50%).
+  - **Bug real encontrado e corrigido**: o `fetch` do `ads.config.json`
+    ainda estava em voo quando o menu (primeira tela do app) já tinha
+    aparecido, então o `menu-footer` ficava vazio até a próxima troca de
+    tela. Corrigido guardando a Promise do fetch e, quando ela resolve,
+    chamando um `refreshAd()` novo (só atualiza a imagem do slot, sem
+    reiniciar timer/animação da tela) na tela que estiver visível
+    naquele momento.
+  - Simplificações conscientes: cliques em slot de campo (`pitch-*`) não
+    estão ligados a nada ainda — a spec diz que eles só deveriam ser
+    clicáveis na tela de fim de jogo (não durante a partida), mas como o
+    fim de jogo aqui é um painel DOM por cima do canvas (não uma cena de
+    campo interativa de verdade), implementar esse clique específico
+    ficou de fora por ora; os slots de TELA (menu/loading/endgame/replay)
+    são clicáveis normalmente. `ball-skin` faz *clip* circular da imagem
+    (sem aplicar ao rastro/trail, que continua branco) — suficiente pra
+    provar o conceito, não é um sistema de skins de verdade (isso seria
+    a "Loja" placeholder do M6).
+- **M1-M8 concluídos.** Falta só o **M9** (seção 15 do roadmap):
+  balanceamento, polimento, testes em dispositivo de verdade, e rodar a
+  checklist de critérios de aceite da seção 14 item por item. Depois
+  disso é que faz sentido auditar as 5 decisões bloqueantes da seção 13
+  antes de considerar multiplayer (passo sugerido pela própria spec, "Passo
+  5" — ainda não feito).
+
+- **M9 — checklist da seção 14 (2026-08-16).**
+  - [x] Partida completa de 3 minutos jogável sem travar — testado com uma
+    partida **de verdade, sem forçar nada via debug hook**: ~115s
+    contínuos monitorados em desktop (checagem de tick a cada 20s,
+    sempre avançando ~60 ticks/tick de relógio, zero erros), até o
+    relógio zerar sozinho, `phase` virar `ended` e a tela de fim de jogo
+    aparecer com o resultado certo (0-2, Derrota, XP calculado certo). No
+    viewport mobile landscape (812×375), mais 20s contínuos monitorados,
+    mesma taxa de tick, zero erros, renderização correta (campo, HUD,
+    anúncios, controles touch todos no lugar).
+  - [ ] **60 FPS estáveis em celular intermediário — não verificável
+    nesta sessão.** Não há um Android físico disponível aqui; o teste
+    acima confirma que a simulação e o render não travam nem cortam tick
+    em viewport mobile *dentro do navegador de desenvolvimento*, mas isso
+    não prova FPS em hardware de verdade. Fica como pendência explícita
+    pro Mateus testar num aparelho físico antes de considerar a entrega 1
+    fechada.
+  - [x] Os 3 níveis de IA são perceptivelmente diferentes — confirmado
+    quantitativamente no M4 (Lenda venceu Novato em ~77% das partidas
+    decisivas, 40 partidas headless) e qualitativamente ao vivo (Lenda
+    reage e persegue visivelmente mais rápido que Novato). A meta da
+    seção 5.3 é sobre taxa de vitória contra **humanos** (~70% iniciante
+    perde pro Novato, Lenda vence ~85% dos jogadores) — isso não dá pra
+    validar sem playtesters de verdade; só o proxy bot-vs-bot foi medido.
+  - [x] Gol detectado com a bola em velocidade máxima — teste automatizado
+    (`rules.test.ts`, swept collision) desde o M3.
+  - [x] Replay automático de gol + salvar/reproduzir — testado ao vivo no
+    M7.
+  - [x] XP, nível, moeda e sequência persistem entre sessões — testado ao
+    vivo no M6 (`localStorage`).
+  - [x] Todos os slots de anúncio renderizando com telemetria viewable —
+    testado ao vivo no M8 (nota: a tabela da seção 10.1 tem 12 slots, não
+    11 como o texto diz — ver entrada do M8).
+  - [x] `core/` com cobertura de teste — **99.54% statements / 100%
+    functions / 97.31% branches** (`vitest --coverage`, escopo
+    `src/futtrool/core/**`). Instalei `@vitest/coverage-v8` como
+    dependência de dev pra medir isso (não existia no projeto). Os poucos
+    branches sem cobertura são casos extremamente defensivos (ex.:
+    normalizar um vetor de comprimento zero) — não achei nenhum caminho
+    de regra/física real sem teste.
+  - [x] Nenhum import de DOM dentro de `core/` — confirmado por grep
+    (`window`, `document`, `localStorage`, `navigator`, `Math.random`,
+    `Date.now`, `setTimeout`, `requestAnimationFrame`: zero ocorrências
+    fora de comentários) e por grep de imports saindo de `core/` pra
+    qualquer outra camada (zero ocorrências). `npm run build` também
+    passa limpo (bundle do FutTrool: 57.6 kB / 18 kB gzip).
+  - 152 testes automatizados no total (9 novos neste marco:
+    `perception.test.ts` + casos extras em `physics.test.ts`/
+    `rules.test.ts` pra fechar os gaps que a cobertura apontou).
+  - Não fiz nenhuma mudança de balanceamento de física/IA neste marco —
+    nada nos testes ou no playtesting ao vivo apontou desequilíbrio óbvio
+    além do que já estava registrado (o gol contra "de sorte" do M8,
+    física normal, não bug).

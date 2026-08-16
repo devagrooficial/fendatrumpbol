@@ -1,0 +1,340 @@
+// Máquina de estados da IA (spec seção 5.1): Percepção -> Decisão -> Comando.
+// A IA só enxerga o mesmo GameState que qualquer jogador veria e só produz
+// um Command — sem acesso privilegiado (nem à posição "real" sem atraso do
+// adversário, nem a cooldowns escondidos).
+//
+// Simplificação registrada em docs/NOTES.md: o atraso de reactionMs vale
+// pra ESTRATÉGIA (qual estado da FSM, pra onde correr), reavaliada a cada
+// 100ms como a spec pede. O gatilho fino de "a bola está no alcance do meu
+// chute agora" usa a posição atual de verdade — do contrário a IA erraria
+// contatos triviais por causa do próprio atraso que deveria só afetar
+// leitura estratégica, não a coordenação motor-mão do próprio corpo.
+
+import type { Command, GameState, PlayerId, Vec2 } from '../types';
+import { FIELD, PHYS } from '../constants';
+import { createRngState, nextRandom, nextRange, type RngState } from '../rng';
+import { add, length, normalize, scale, sub } from '../vec2';
+import { getDelayedSnapshot, predictInterceptPoint, pushSnapshot, type AiSnapshot } from './perception';
+import type { AiProfile } from './profiles';
+
+export type AiFsmState = 'kickoff' | 'chase' | 'intercept' | 'attack' | 'defend' | 'recover' | 'celebrate';
+
+type KickPlan = {
+  holdSecondsTarget: number;
+  holdSecondsElapsed: number;
+  aimDir: Vec2;
+};
+
+export type AiState = {
+  history: AiSnapshot[];
+  fsmState: AiFsmState;
+  targetPoint: Vec2;
+  msSinceEval: number;
+  idleTimer: number;
+  kicking: KickPlan | null;
+  rngState: RngState;
+};
+
+export function createAiState(seed: number): AiState {
+  return {
+    history: [],
+    fsmState: 'kickoff',
+    targetPoint: { x: FIELD.WIDTH / 2, y: FIELD.HEIGHT / 2 },
+    msSinceEval: Number.POSITIVE_INFINITY, // força avaliação no primeiro tick
+    idleTimer: 0,
+    kicking: null,
+    rngState: createRngState(seed),
+  };
+}
+
+const EVAL_INTERVAL_MS = 100;
+const IDLE_MIN_S = 0.2;
+const IDLE_MAX_S = 0.5;
+const NO_COMMAND: Omit<Command, 'tick'> = { move: { x: 0, y: 0 }, kickHeld: false, dash: false };
+
+function goalCenter(side: 'left' | 'right'): Vec2 {
+  return { x: side === 'left' ? 0 : FIELD.WIDTH, y: FIELD.HEIGHT / 2 };
+}
+
+// progresso 0 = na própria linha de fundo, FIELD.WIDTH = na linha do
+// adversário — normaliza os dois lados do campo pro mesmo raciocínio.
+function attackProgress(x: number, mySide: 'left' | 'right'): number {
+  return mySide === 'left' ? x : FIELD.WIDTH - x;
+}
+
+function bestShotTarget(oppGoalX: number, defenderPos: Vec2): Vec2 {
+  const inset = 15; // mira um pouco pra dentro da trave, não em cima dela
+  const top = { x: oppGoalX, y: FIELD.HEIGHT / 2 - FIELD.GOAL_OPENING / 2 + inset };
+  const bottom = { x: oppGoalX, y: FIELD.HEIGHT / 2 + FIELD.GOAL_OPENING / 2 - inset };
+  return Math.abs(defenderPos.y - top.y) > Math.abs(defenderPos.y - bottom.y) ? top : bottom;
+}
+
+function rotate(dir: Vec2, radians: number): Vec2 {
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  return { x: dir.x * cos - dir.y * sin, y: dir.x * sin + dir.y * cos };
+}
+
+type FsmDecision = {
+  fsmState: AiFsmState;
+  targetPoint: Vec2;
+  wantsToShoot: boolean;
+  shootPower: number; // 0..1, carga alvo ANTES do ruído de chargeAccuracy
+  rngState: RngState;
+};
+
+function evaluateFsm(
+  perceived: AiSnapshot,
+  mySide: 'left' | 'right',
+  profile: AiProfile,
+  rngState: RngState,
+): FsmDecision {
+  const ownGoal = goalCenter(mySide);
+  const aiMaxSpeed = PHYS.PLAYER_MAX_SPEED * profile.speedFactor;
+
+  const distSelfToBall = length(sub(perceived.ball.pos, perceived.self.pos));
+  const distOppToBall = length(sub(perceived.ball.pos, perceived.opponent.pos));
+  const ballProgress = attackProgress(perceived.ball.pos.x, mySide);
+  const selfProgress = attackProgress(perceived.self.pos.x, mySide);
+
+  const CLOSER_MARGIN = 40; // u — evita alternar estado por diferença insignificante
+  const iAmCloser = distSelfToBall <= distOppToBall + CLOSER_MARGIN;
+  const beatenByOpponent = ballProgress < selfProgress - 60 && !iAmCloser;
+
+  let fsmState: AiFsmState;
+  if (beatenByOpponent) {
+    fsmState = 'recover';
+  } else if (ballProgress < FIELD.WIDTH / 3 && !iAmCloser) {
+    fsmState = 'defend';
+  } else if (iAmCloser) {
+    if (ballProgress > (FIELD.WIDTH * 2) / 3) {
+      fsmState = 'attack';
+    } else {
+      const ballSpeed = length(perceived.ball.vel);
+      fsmState = ballSpeed > 40 ? 'intercept' : 'chase';
+    }
+  } else {
+    fsmState = 'defend';
+  }
+
+  let targetPoint: Vec2;
+  switch (fsmState) {
+    case 'recover': {
+      const toGoal = sub(ownGoal, perceived.ball.pos);
+      targetPoint = add(perceived.ball.pos, scale(normalize(toGoal), length(toGoal) * 0.7));
+      break;
+    }
+    case 'defend': {
+      const anchor =
+        profile.defensivePositioning === 'anticipate'
+          ? predictInterceptPoint(perceived.ball.pos, perceived.ball.vel, perceived.self.pos, aiMaxSpeed, profile.predictionHorizon)
+          : perceived.ball.pos;
+      if (profile.defensivePositioning === 'weak') {
+        targetPoint = anchor;
+      } else {
+        const depthFraction = profile.defensivePositioning === 'anticipate' ? 0.55 : 0.4;
+        targetPoint = add(ownGoal, scale(sub(anchor, ownGoal), depthFraction));
+      }
+      break;
+    }
+    case 'intercept':
+      targetPoint = predictInterceptPoint(
+        perceived.ball.pos,
+        perceived.ball.vel,
+        perceived.self.pos,
+        aiMaxSpeed,
+        profile.predictionHorizon,
+      );
+      break;
+    case 'attack': {
+      // Não anda direto pra cima da bola — se posiciona do lado oposto ao
+      // gol adversário (um "standoff" atrás da bola), pra quando chegar lá
+      // já estar de frente pro alvo do chute com a bola no meio do caminho.
+      // Sem isso, o facing do chute (mira) e a posição real da bola raramente
+      // coincidem dentro do cone de KICK_ARC, e o chute falha em silêncio.
+      const oppGoalX = mySide === 'left' ? FIELD.WIDTH : 0;
+      const shotTarget = bestShotTarget(oppGoalX, perceived.opponent.pos);
+      const shotDir = normalize(sub(shotTarget, perceived.ball.pos));
+      const standoff = PHYS.PLAYER_RADIUS + PHYS.BALL_RADIUS + 12;
+      targetPoint = sub(perceived.ball.pos, scale(shotDir, standoff));
+      break;
+    }
+    case 'chase':
+      targetPoint = perceived.ball.pos;
+      break;
+    default:
+      targetPoint = perceived.self.pos;
+  }
+
+  const wantsToShoot = fsmState === 'attack' || (fsmState === 'defend' && distSelfToBall <= PHYS.KICK_RANGE * 1.5);
+  const shootPower = fsmState === 'attack' ? 0.9 : 0.35;
+
+  return { fsmState, targetPoint, wantsToShoot, shootPower, rngState };
+}
+
+function planKick(
+  wantsToShoot: boolean,
+  shootPower: number,
+  fsmState: AiFsmState,
+  ballPos: Vec2,
+  oppPos: Vec2,
+  mySide: 'left' | 'right',
+  profile: AiProfile,
+  rngState: RngState,
+): { plan: KickPlan | null; rngState: RngState } {
+  if (!wantsToShoot) return { plan: null, rngState };
+
+  let state = rngState;
+  const mistakeRoll = nextRandom(state);
+  state = mistakeRoll.nextState;
+  const madeMistake = mistakeRoll.value < profile.mistakeChance;
+
+  let aimDir: Vec2;
+  if (madeMistake) {
+    const randomAngle = nextRange(state, 0, Math.PI * 2);
+    state = randomAngle.nextState;
+    aimDir = { x: Math.cos(randomAngle.value), y: Math.sin(randomAngle.value) };
+  } else if (fsmState === 'attack') {
+    // Mira a partir da BOLA, não do jogador — é a bola que precisa viajar
+    // até o alvo, e o jogador já deveria estar posicionado atrás dela
+    // nessa direção (ver o "standoff" calculado em evaluateFsm).
+    const oppGoalX = mySide === 'left' ? FIELD.WIDTH : 0;
+    const target = bestShotTarget(oppGoalX, oppPos);
+    aimDir = normalize(sub(target, ballPos));
+  } else {
+    // Afastar da própria área — "clareia" pro meio-campo/frente.
+    const upfield = mySide === 'left' ? { x: 1, y: 0 } : { x: -1, y: 0 };
+    aimDir = upfield;
+  }
+
+  const errorRoll = nextRange(state, -profile.aimErrorDeg, profile.aimErrorDeg);
+  state = errorRoll.nextState;
+  aimDir = rotate(aimDir, (errorRoll.value * Math.PI) / 180);
+
+  const chargeNoiseRoll = nextRange(state, -1, 1);
+  state = chargeNoiseRoll.nextState;
+  const noiseSpread = (1 - profile.chargeAccuracy) * 0.4;
+  const targetCharge = Math.min(1, Math.max(0, shootPower + chargeNoiseRoll.value * noiseSpread));
+
+  return {
+    plan: { holdSecondsTarget: targetCharge * PHYS.KICK_CHARGE_TIME, holdSecondsElapsed: 0, aimDir },
+    rngState: state,
+  };
+}
+
+export function decideCommand(
+  world: GameState,
+  aiState: AiState,
+  profile: AiProfile,
+  playerId: PlayerId,
+  dt: number,
+): { command: Command; aiState: AiState } {
+  const opponentId: PlayerId = playerId === 'p1' ? 'p2' : 'p1';
+  const mySide: 'left' | 'right' = playerId === 'p1' ? 'left' : 'right';
+  const nowMs = world.tick * dt * 1000;
+
+  const self = world.players[playerId];
+  const opponent = world.players[opponentId];
+
+  const snapshot: AiSnapshot = {
+    tMs: nowMs,
+    ball: { pos: world.ball.pos, vel: world.ball.vel },
+    self: { pos: self.pos, vel: self.vel, facing: self.facing },
+    opponent: { pos: opponent.pos, vel: opponent.vel },
+    score: world.score,
+    timeLeftMs: world.timeLeftMs,
+  };
+  const history = pushSnapshot(aiState.history, snapshot);
+
+  if (world.phase !== 'playing') {
+    const fsmState: AiFsmState = world.phase === 'goal' ? 'celebrate' : 'kickoff';
+    return {
+      command: { tick: world.tick, ...NO_COMMAND },
+      aiState: { ...aiState, history, fsmState, kicking: null },
+    };
+  }
+
+  let { fsmState, targetPoint, msSinceEval, idleTimer, kicking, rngState } = aiState;
+  msSinceEval += dt * 1000;
+
+  if (msSinceEval >= EVAL_INTERVAL_MS && self.stunTimer <= 0) {
+    msSinceEval = 0;
+    const perceived = getDelayedSnapshot(history, profile.reactionMs, nowMs) ?? snapshot;
+    const decision = evaluateFsm(perceived, mySide, profile, rngState);
+    fsmState = decision.fsmState;
+    targetPoint = decision.targetPoint;
+    rngState = decision.rngState;
+
+    if (idleTimer <= 0) {
+      const idleRoll = nextRandom(rngState);
+      rngState = idleRoll.nextState;
+      if (idleRoll.value < profile.idleChance) {
+        const durationRoll = nextRange(rngState, IDLE_MIN_S, IDLE_MAX_S);
+        rngState = durationRoll.nextState;
+        idleTimer = durationRoll.value;
+      }
+    }
+
+    if (!kicking) {
+      const kickPlan = planKick(decision.wantsToShoot, decision.shootPower, fsmState, world.ball.pos, opponent.pos, mySide, profile, rngState);
+      kicking = kickPlan.plan;
+      rngState = kickPlan.rngState;
+    }
+  }
+
+  idleTimer = Math.max(0, idleTimer - dt);
+
+  const baseAiState = { ...aiState, history, fsmState, targetPoint, msSinceEval, idleTimer, rngState };
+
+  if (idleTimer > 0 || self.stunTimer > 0) {
+    return { command: { tick: world.tick, ...NO_COMMAND }, aiState: { ...baseAiState, kicking } };
+  }
+
+  // Chute em andamento: alinha o facing na direção da mira (movendo um
+  // pouco nela) e segura até bater a carga alvo, aí solta.
+  if (kicking) {
+    const ballInRange =
+      length(sub(world.ball.pos, self.pos)) <= PHYS.KICK_RANGE &&
+      Math.abs(angleBetween(sub(world.ball.pos, self.pos), kicking.aimDir)) < Math.PI / 2;
+
+    if (!ballInRange) {
+      return {
+        command: { tick: world.tick, ...NO_COMMAND },
+        aiState: { ...baseAiState, kicking: null },
+      };
+    }
+
+    const holdSecondsElapsed = kicking.holdSecondsElapsed + dt;
+    const releasing = holdSecondsElapsed >= kicking.holdSecondsTarget;
+
+    return {
+      command: { tick: world.tick, move: scale(kicking.aimDir, 0.15), kickHeld: !releasing, dash: false },
+      aiState: { ...baseAiState, kicking: releasing ? null : { ...kicking, holdSecondsElapsed } },
+    };
+  }
+
+  // Movimento normal em direção ao alvo decidido pela FSM.
+  const toTarget = sub(targetPoint, self.pos);
+  const move = length(toTarget) > 4 ? scale(normalize(toTarget), profile.speedFactor) : { x: 0, y: 0 };
+
+  let dash = false;
+  if (self.dashCooldown <= 0 && (fsmState === 'recover' || fsmState === 'intercept') && length(toTarget) > PHYS.PLAYER_RADIUS * 3) {
+    const dashRoll = nextRandom(rngState);
+    rngState = dashRoll.nextState;
+    dash = dashRoll.value < profile.dashUsage;
+  }
+
+  return {
+    command: { tick: world.tick, move, kickHeld: false, dash },
+    aiState: { ...baseAiState, rngState },
+  };
+}
+
+function angleBetween(a: Vec2, b: Vec2): number {
+  const angleA = Math.atan2(a.y, a.x);
+  const angleB = Math.atan2(b.y, b.x);
+  let diff = angleA - angleB;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  return diff;
+}

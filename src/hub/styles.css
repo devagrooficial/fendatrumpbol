@@ -96,6 +96,14 @@ html, body {
   background: #ffa83d;
 }
 
+.game-card--futtrool .game-card__icon {
+  color: #4cae50;
+}
+
+.game-card--futtrool .game-card__play {
+  background: #e93d82;
+}
+
 .hub__credits {
   margin: 0;
   font-size: 0.75rem;

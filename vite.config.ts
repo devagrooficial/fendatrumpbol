@@ -10,6 +10,7 @@ export default defineConfig({
         hub: resolve(import.meta.dirname, 'index.html'),
         trumpbol: resolve(import.meta.dirname, 'trumpbol.html'),
         flysim: resolve(import.meta.dirname, 'flysim.html'),
+        futtrool: resolve(import.meta.dirname, 'futtrool.html'),
       },
     },
   },

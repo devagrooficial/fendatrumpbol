@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "defaultCampaign": "house",
+  "campaigns": [
+    {
+      "id": "house",
+      "advertiser": "FutTrool (casa)",
+      "priority": 100,
+      "creatives": [
+        { "slotId": "pitch-nw", "asset": "/futtrool/ads/house-pitch-board.svg", "alt": "FutTrool", "weight": 1 },
+        { "slotId": "pitch-ne", "asset": "/futtrool/ads/house-pitch-board-alt.svg", "alt": "Mateus Almeida", "clickUrl": "https://github.com", "weight": 1 },
+        { "slotId": "pitch-sw", "asset": "/futtrool/ads/house-pitch-board-alt.svg", "alt": "Mateus Almeida", "clickUrl": "https://github.com", "weight": 1 },
+        { "slotId": "pitch-se", "asset": "/futtrool/ads/house-pitch-board.svg", "alt": "FutTrool", "weight": 1 },
+        { "slotId": "center-watermark", "asset": "/futtrool/ads/house-watermark.svg", "alt": "FutTrool", "weight": 1 },
+        { "slotId": "scoreboard-sponsor", "asset": "/futtrool/ads/house-scoreboard.svg", "alt": "FutTrool", "weight": 1 },
+        { "slotId": "loading-hero", "asset": "/futtrool/ads/house-loading-hero.svg", "alt": "FutTrool", "weight": 1 },
+        { "slotId": "endgame-banner", "asset": "/futtrool/ads/house-endgame-banner.svg", "alt": "FutTrool", "weight": 1 },
+        { "slotId": "replay-lower-third", "asset": "/futtrool/ads/house-replay-lower-third.svg", "alt": "FutTrool", "weight": 1 },
+        { "slotId": "menu-footer", "asset": "/futtrool/ads/house-menu-footer.svg", "alt": "FutTrool", "weight": 1 },
+        { "slotId": "ball-skin", "asset": "/futtrool/ads/house-ball-skin.svg", "alt": "FutTrool", "weight": 1 },
+        { "slotId": "player-badge", "asset": "/futtrool/ads/house-player-badge.svg", "alt": "FutTrool", "weight": 1 }
+      ]
+    }
+  ]
+}

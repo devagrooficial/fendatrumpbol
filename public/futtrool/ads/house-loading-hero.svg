@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+  <rect width="640" height="360" fill="#0b0b0e"/>
+  <rect x="10" y="10" width="620" height="340" fill="none" stroke="#e93d82" stroke-width="4"/>
+  <text x="320" y="170" font-family="Segoe UI, sans-serif" font-weight="800" font-size="56" fill="#fdf6ff" text-anchor="middle" dominant-baseline="middle">FutTrool</text>
+  <text x="320" y="230" font-family="Segoe UI, sans-serif" font-weight="600" font-size="20" fill="#e93d82" text-anchor="middle" dominant-baseline="middle">seu anúncio em destaque aqui</text>
+</svg>

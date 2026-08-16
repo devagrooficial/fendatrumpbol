@@ -1,14 +1,18 @@
 # Hub de Jogos
 
-Site com um hub de seleção (`/`) e dois jogos 3D 100% no navegador, sem
+Site com um hub de seleção (`/`) e três jogos 100% no navegador, sem
 backend de jogo (só localStorage, exceto o ranking opcional do runner):
 
 - **[Fenda do TrumpBol](#fenda-do-trumpbol)** — endless runner de 3 pistas.
 - **[Fly Simulator](#fly-simulator)** — voo livre com física arcade sobre
   terreno procedural.
+- **[FutTrool](#futtrool)** — futebol 1v1 top-down contra IA, com replay,
+  progressão e sistema de anúncios. Especificação e notas de
+  desenvolvimento completas em [`src/futtrool/docs/`](src/futtrool/docs/).
 
-100% original: geometria primitiva do Three.js, sem assets externos, sem
-trilha licenciada (SFX sintetizados via Web Audio API).
+Os dois primeiros são 3D (Three.js, geometria primitiva, sem assets
+externos); o FutTrool é Canvas 2D puro. Nenhum dos três usa trilha
+licenciada — SFX sintetizados via Web Audio API.
 
 ## Como rodar
 
@@ -18,33 +22,34 @@ npm run dev
 ```
 
 Abre em `http://localhost:5173` — cai no hub, de onde dá pra entrar em
-qualquer um dos dois jogos.
+qualquer um dos três jogos.
 
 Outros comandos:
 
 ```bash
-npm run build   # build de produção (tsc --noEmit + vite build) — gera as 3 páginas
-npm run test    # roda a suíte Vitest (runner + fly simulator)
+npm run build   # build de produção (tsc --noEmit + vite build) — gera as 4 páginas
+npm run test    # roda a suíte Vitest (runner + fly simulator + FutTrool)
 npm run preview # serve o build de produção localmente
 ```
 
 ## Arquitetura
 
-Site multi-página via Vite (`vite.config.ts` define 3 entradas de build:
-`index.html`, `trumpbol.html`, `flysim.html`). Cada jogo é uma árvore de
-código independente — o único código compartilhado é o acumulador de delta
-fixo do loop (`src/shared/Loop.ts`), que não conhece o config de nenhum dos
-dois.
+Site multi-página via Vite (`vite.config.ts` define 4 entradas de build:
+`index.html`, `trumpbol.html`, `flysim.html`, `futtrool.html`). Cada jogo é
+uma árvore de código independente — o único código compartilhado é o
+acumulador de delta fixo do loop (`src/shared/Loop.ts`), que não conhece o
+config de nenhum deles.
 
 ```
 index.html                  hub — "Escolha seu Jogo"
 trumpbol.html                entrada do runner
 flysim.html                  entrada do fly simulator
+futtrool.html                 entrada do FutTrool
 src/
   shared/
     Loop.ts                  acumulador de delta fixo (genérico, sem estado de jogo)
   hub/
-    main.ts / styles.css     tela de seleção — dois cards, sem estado compartilhado
+    main.ts / styles.css     tela de seleção — três cards, sem estado compartilhado
   main.ts                    bootstrap do runner (Fenda do TrumpBol)
   config.ts / core/ / world/ / entities/ / systems/ / ui/
                               todo o código do runner (ver seção abaixo)
@@ -71,6 +76,16 @@ src/
       HUD.ts / Screens.ts       velocidade, altitude, manete, combustível, checkpoints, menu, pause, game over
       icons.ts                   ícones SVG inline autorais
   test/                         suíte Vitest (runner + fly simulator)
+  futtrool/
+    main.ts                    bootstrap do FutTrool
+    core/                       simulação PURA (sem DOM) — física, regras, IA; ver src/futtrool/docs/
+    render/ ui/ input/ audio/   camadas de app (canvas 2D, telas DOM, teclado/touch, SFX)
+    replay/ progression/ ads/   replay de gol, XP/moedas, sistema de anúncios
+    i18n/                       strings de UI centralizadas (pt-BR)
+    tests/                      suíte Vitest própria (152 testes, ~99% de cobertura em core/)
+    docs/
+      SPEC.md                   especificação original — fonte da verdade de regras
+      NOTES.md                  decisões de adaptação, achados e progresso marco a marco
 supabase/
   schema.sql                    SQL da tabela leaderboard + políticas de RLS (ranking do runner)
   migrations/                    migrações incrementais (ex.: coluna de gemas)
@@ -211,3 +226,38 @@ azul + laranja), sem referência a nenhuma marca ou modelo real.
 - **Áudio sintetizado**: motor com osciloscópio contínuo (frequência/ganho
   seguem o manete), chime de checkpoint, chime de pouso, som de colisão e
   de combustível zerado.
+
+---
+
+## FutTrool
+
+Futebol 1v1 top-down (Canvas 2D puro, sem engine) contra IA, com 3 níveis
+de dificuldade, replay automático de gol, progressão local e sistema de
+anúncios configurável — a especificação completa e o histórico de decisões
+de cada marco de desenvolvimento estão em
+[`src/futtrool/docs/SPEC.md`](src/futtrool/docs/SPEC.md) e
+[`src/futtrool/docs/NOTES.md`](src/futtrool/docs/NOTES.md); esse README só
+resume o que já foi entregue.
+
+- **Simulação determinística**: `src/futtrool/core/` não importa DOM,
+  `Math.random` ou `Date.now` — só recebe `tick`/`Command`/`dt` e devolve o
+  próximo estado (`step()` puro), preparado pra virar multiplayer sem
+  reescrita. ~99.5% de cobertura de teste nessa camada.
+- **Física arcade**: aceleração/arrasto/colisão por impulso, chute com
+  carga (curta = fraco, segurar = carrega) e cone de mira, dash com stun,
+  detecção de gol por *swept collision* (não perde gol em alta velocidade).
+- **IA em 3 níveis** (Novato/Profissional/Lenda): percepção com atraso de
+  reação (não é onisciente — lê o mesmo estado que um jogador leria, com
+  atraso), máquina de estados (perseguir/interceptar/atacar/defender/
+  recuperar), mira com erro e chance de erro por nível.
+- **Controles**: teclado (WASD/setas + chute/dash) e joystick + botões
+  touch (com anel de carga do chute), detecção automática por dispositivo.
+- **Replay de gol**: buffer circular dos últimos 8s, replay automático a
+  0.6x depois de cada gol, "Reagir"/"Salvar replay"/"Pular", e uma lista de
+  replays salvos assistível a partir do menu.
+- **Progressão local**: XP, nível, moedas e sequência de vitórias
+  persistidos em `localStorage`, com bônus de sequência.
+- **Publicidade configurável**: 12 espaços de anúncio (campo, HUD, telas)
+  carregados de `public/futtrool/ads.config.json` — trocar campanha é só
+  editar o JSON, sem rebuild — com telemetria de impressão/*viewable*
+  exposta em `window.__adStats` (modo dev).
