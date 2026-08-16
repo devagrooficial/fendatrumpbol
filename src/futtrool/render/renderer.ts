@@ -13,7 +13,7 @@ export function renderField(
   viewportW: number,
   viewportH: number,
 ): void {
-  ctx.fillStyle = THEME.UI_BG;
+  ctx.fillStyle = THEME.FIELD_BG;
   ctx.fillRect(0, 0, viewportW, viewportH);
 
   drawGrassStripes(ctx, camera);
@@ -33,9 +33,50 @@ function drawGrassStripes(ctx: CanvasRenderingContext2D, camera: Camera): void {
   }
 }
 
-// Área do gol / rede (spec seção 11): marcação sólida atrás da linha de
-// fundo, não pra dentro do campo — é onde fica a rede de verdade, igual
-// num campo real e igual às capturas de tela de referência (ver
+const NET_MESH_SPACING = 13; // unidades de mundo entre fios da rede
+
+// Rede do gol desenhada como malha quadriculada branca (fios finos, fundo
+// escuro por trás) — igual a uma rede de gol de verdade, em vez do
+// preenchimento sólido laranja de antes.
+function drawNetMesh(ctx: CanvasRenderingContext2D, camera: Camera, x0: number, y0: number, x1: number, y1: number): void {
+  const a = camera.worldToScreen(x0, y0);
+  const b = camera.worldToScreen(x1, y1);
+  const left = Math.min(a.x, b.x);
+  const right = Math.max(a.x, b.x);
+  const top = Math.min(a.y, b.y);
+  const bottom = Math.max(a.y, b.y);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(left, top, right - left, bottom - top);
+  ctx.clip();
+
+  ctx.fillStyle = THEME.FIELD_BG;
+  ctx.fillRect(left, top, right - left, bottom - top);
+
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+  ctx.lineWidth = 1;
+  const spacing = Math.max(2, camera.worldLengthToScreen(NET_MESH_SPACING));
+
+  for (let x = left; x <= right; x += spacing) {
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x, bottom);
+    ctx.stroke();
+  }
+  for (let y = top; y <= bottom; y += spacing) {
+    ctx.beginPath();
+    ctx.moveTo(left, y);
+    ctx.lineTo(right, y);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+// Área do gol / rede (spec seção 11): marcação atrás da linha de fundo,
+// não pra dentro do campo — é onde fica a rede de verdade, igual num
+// campo real e igual às capturas de tela de referência (ver
 // docs/NOTES.md, seção 3). Bate com a física da parede (physics.ts:
 // resolveWallCollision já trata GOAL_DEPTH como o fundo da rede, *fora*
 // do campo — de -GOAL_DEPTH a 0, não de 0 a +GOAL_DEPTH). Corrigido depois
@@ -45,21 +86,11 @@ function drawGoalAreas(ctx: CanvasRenderingContext2D, camera: Camera): void {
   const openingTop = FIELD.HEIGHT / 2 - FIELD.GOAL_OPENING / 2;
   const openingBottom = FIELD.HEIGHT / 2 + FIELD.GOAL_OPENING / 2;
 
-  ctx.fillStyle = THEME.GOAL_AREA_COLOR;
-
   // Esquerda: de x=-GOAL_DEPTH até x=0 (atrás da linha de fundo).
-  {
-    const p0 = camera.worldToScreen(-FIELD.GOAL_DEPTH, openingTop);
-    const p1 = camera.worldToScreen(0, openingBottom);
-    ctx.fillRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y);
-  }
+  drawNetMesh(ctx, camera, -FIELD.GOAL_DEPTH, openingTop, 0, openingBottom);
 
   // Direita: de x=WIDTH até x=WIDTH+GOAL_DEPTH (atrás da linha de fundo).
-  {
-    const p0 = camera.worldToScreen(FIELD.WIDTH, openingTop);
-    const p1 = camera.worldToScreen(FIELD.WIDTH + FIELD.GOAL_DEPTH, openingBottom);
-    ctx.fillRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y);
-  }
+  drawNetMesh(ctx, camera, FIELD.WIDTH, openingTop, FIELD.WIDTH + FIELD.GOAL_DEPTH, openingBottom);
 }
 
 function drawBoundaryAndCenter(ctx: CanvasRenderingContext2D, camera: Camera): void {

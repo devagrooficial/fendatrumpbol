@@ -7,8 +7,11 @@ export const THEME = {
   GRASS_STRIPE_WIDTH: 200,
   LINE_COLOR: 'rgba(255, 255, 255, 0.85)',
   LINE_WIDTH: 4,
-  GOAL_AREA_COLOR: '#C87055',
   UI_BG: '#0B0B0E',
+  // Fundo fora do campo (faixa de apresentação + dentro da rede do gol) —
+  // verde bem mais escuro que o gramado, não preto, pra continuar
+  // parecendo "grama na sombra do estádio" em vez de vazio.
+  FIELD_BG: '#122B18',
   ACCENT_PRIMARY: '#E93D82',
   ACCENT_SECONDARY: '#4ADE80',
   ACCENT_BOOST: '#38BDF8',

@@ -876,3 +876,28 @@ Nenhum teste automatizado cobre esse arquivo (é desenho puro em canvas,
 mesma categoria de `renderer.ts` inteiro — sempre foi verificado
 visualmente, não por `vitest`). `npx tsc --noEmit` limpo, 157/157 testes
 passando (nada aqui mexeu em `core/`).
+
+## 20. Fundo verde escuro (não preto) + rede de gol quadriculada branca
+
+Dois ajustes de tema pedidos pelo Mateus:
+
+- Fundo fora do campo (a faixa de apresentação lateral das placas de
+  anúncio, `FIELD.APRON_X`) trocado de preto (`THEME.UI_BG`, `#0B0B0E`)
+  pra um verde bem escuro (`THEME.FIELD_BG`, novo, `#122B18`) — "grama na
+  sombra do estádio" em vez de vazio preto. `THEME.UI_BG` continua
+  existindo pro contorno da bola (único outro uso que tinha), não mexi
+  nisso.
+- Rede do gol: antes era um retângulo sólido laranja
+  (`THEME.GOAL_AREA_COLOR`, removido — não tinha mais nenhum outro uso).
+  Agora `drawNetMesh` (novo, em `renderer.ts`) desenha uma malha
+  quadriculada branca de verdade — fundo escuro (`FIELD_BG`, mesma cor do
+  resto de fora do campo) recortado (`ctx.clip()`) na área do gol, com
+  linhas finas brancas semitransparentes (`rgba(255,255,255,0.5)`)
+  verticais e horizontais espaçadas a cada `NET_MESH_SPACING` (13
+  unidades de mundo) — a densidade da malha se adapta ao zoom porque a
+  distância entre fios é convertida via `camera.worldLengthToScreen`, não
+  fixa em pixels de tela.
+
+Confirmado ao vivo: fundo verde-escuro visível ao redor do campo/placas,
+rede branca quadriculada nos dois gols. `npx tsc --noEmit` limpo,
+157/157 testes passando.
