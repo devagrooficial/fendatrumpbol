@@ -122,26 +122,28 @@ function drawBoundaryAndCenter(ctx: CanvasRenderingContext2D, camera: Camera): v
   ctx.stroke();
 }
 
-// Seta de direção (facing) — haste + ponta triangular, no lugar da linha
-// reta original: dá uma leitura mais clara de "pra onde esse jogador está
-// mirando" (dobra como indicador do chute) com acabamento mais parecido
-// com HUD de jogo de verdade.
+// Seta de direção (facing): só a parte que fica FORA do círculo do
+// jogador — nada de haste cortando por cima do preenchimento colorido.
+// Começa exatamente na borda do círculo (não no centro) e vai só pra
+// fora: haste curta + ponta triangular.
 function renderFacingArrow(ctx: CanvasRenderingContext2D, p: { x: number; y: number }, r: number, facing: number): void {
   const dirX = Math.cos(facing);
   const dirY = Math.sin(facing);
-  const shaftLen = r * 0.9;
-  const headLen = r * 0.65;
-  const headHalfWidth = r * 0.3;
+  const shaftLen = r * 0.4;
+  const headLen = r * 0.6;
+  const headHalfWidth = r * 0.32;
 
-  const shaftEndX = p.x + dirX * shaftLen;
-  const shaftEndY = p.y + dirY * shaftLen;
-  const tipX = p.x + dirX * (shaftLen + headLen);
-  const tipY = p.y + dirY * (shaftLen + headLen);
+  const edgeX = p.x + dirX * r;
+  const edgeY = p.y + dirY * r;
+  const shaftEndX = p.x + dirX * (r + shaftLen);
+  const shaftEndY = p.y + dirY * (r + shaftLen);
+  const tipX = p.x + dirX * (r + shaftLen + headLen);
+  const tipY = p.y + dirY * (r + shaftLen + headLen);
   const perpX = -dirY;
   const perpY = dirX;
 
   ctx.beginPath();
-  ctx.moveTo(p.x, p.y);
+  ctx.moveTo(edgeX, edgeY);
   ctx.lineTo(shaftEndX, shaftEndY);
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)';
   ctx.lineWidth = Math.max(2, r * 0.14);
@@ -201,7 +203,11 @@ export function renderPlayerLabel(ctx: CanvasRenderingContext2D, camera: Camera,
   ctx.fillText(label, p.x, p.y - r - 10);
 }
 
-export function renderBall(ctx: CanvasRenderingContext2D, camera: Camera, ball: Ball): void {
+// spin em radianos (Fx.getBallSpin()) — 3 "gomos" espalhados a 120° um do
+// outro, igual a um desenho simplificado de bola de futebol, girando
+// junto com o deslocamento (ver Fx.updateBallSpin: ω = velocidade/raio,
+// rolamento sem deslizar). Só estilização, não tem física real por trás.
+export function renderBall(ctx: CanvasRenderingContext2D, camera: Camera, ball: Ball, spin = 0): void {
   const p = camera.worldToScreen(ball.pos.x, ball.pos.y);
   const r = camera.worldLengthToScreen(ball.radius);
 
@@ -212,18 +218,52 @@ export function renderBall(ctx: CanvasRenderingContext2D, camera: Camera, ball: 
   ctx.lineWidth = Math.max(1, r * 0.12);
   ctx.strokeStyle = THEME.UI_BG;
   ctx.stroke();
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.fillStyle = 'rgba(11, 11, 14, 0.55)';
+  for (let i = 0; i < 3; i++) {
+    const angle = spin + (i * Math.PI * 2) / 3;
+    const cx = p.x + Math.cos(angle) * r * 0.55;
+    const cy = p.y + Math.sin(angle) * r * 0.55;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.34, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
-// Rastro da bola (spec seção 11): últimas N posições em alpha decrescente,
-// a mais antiga primeiro (mais apagada), a mais recente por último.
-export function renderBallTrail(ctx: CanvasRenderingContext2D, camera: Camera, trail: readonly Vec2[], radius: number): void {
+// Rastro da bola (spec seção 11): últimas N posições, desenhadas com
+// gradiente radial (em vez de um disco de cor sólida) pra parecer um
+// borrão de movimento suave em vez de bolinhas com contorno duro. A
+// intensidade também escala com a velocidade atual (speedFactor) — bola
+// parada ou quase parada não mostra rastro nenhum, só quando anda rápido
+// o bastante pra "borrão" fazer sentido.
+export function renderBallTrail(
+  ctx: CanvasRenderingContext2D,
+  camera: Camera,
+  trail: readonly Vec2[],
+  radius: number,
+  speed: number,
+): void {
+  const BLUR_FULL_SPEED = 220; // u/s — velocidade a partir da qual o borrão já está no máximo
+  const speedFactor = Math.min(1, speed / BLUR_FULL_SPEED);
+  if (speedFactor <= 0.03) return;
+
   const r = camera.worldLengthToScreen(radius);
   trail.forEach((pos, i) => {
-    const alpha = ((i + 1) / trail.length) * 0.35;
+    const t = (i + 1) / trail.length;
+    const alpha = t * 0.45 * speedFactor;
     const p = camera.worldToScreen(pos.x, pos.y);
+    const blobR = r * (0.6 + t * 0.5);
+    const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, blobR);
+    gradient.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
     ctx.beginPath();
-    ctx.arc(p.x, p.y, r * 0.7, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+    ctx.arc(p.x, p.y, blobR, 0, Math.PI * 2);
+    ctx.fillStyle = gradient;
     ctx.fill();
   });
 }

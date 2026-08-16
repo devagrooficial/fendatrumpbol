@@ -823,3 +823,56 @@ observar se algum dia a lógica de seleção de anúncio mudar.
 `npx tsc --noEmit` limpo, 157/157 testes passando (nenhum teste
 automatizado cobre `joystick.ts` diretamente — é código de DOM/Pointer
 Events, testado manualmente como o resto do input).
+
+## 19. Bola girando + borrão de movimento; jogador com seta pra fora e borda cinza
+
+Três pedidos de polimento visual do Mateus:
+
+**Bola "rolando" de verdade.** Antes era um círculo branco liso, sem
+nenhuma pista visual de movimento além da posição mudando. Adicionei:
+
+- `Fx.updateBallSpin(speed, radius, dt)` (novo, em `render/fx.ts`):
+  acumula um ângulo de giro (`ballSpin`) proporcional à velocidade —
+  `ω = velocidade/raio` (rolamento sem deslizar), com `% 2π` pra não
+  crescer sem limite numa partida longa. É estilização pura (o jogo é
+  top-down, esse eixo de giro não existiria numa câmera de cima de
+  verdade), não física real — documentado assim no código pra não
+  parecer um erro de física depois. Fica em `Fx` (fora de `core/`) pelo
+  mesmo motivo do resto dos efeitos cosméticos: não precisa ser
+  determinístico, não faz parte da simulação.
+- `renderBall` (`render/renderer.ts`) ganhou um parâmetro `spin` opcional
+  e desenha 3 "gomos" escuros (`rgba(11,11,14,0.55)`, recortados dentro
+  do círculo da bola via `ctx.clip()`) espalhados a 120° um do outro,
+  girando junto com `spin` — dá a leitura de bola girando, tipo os
+  gomos escuros de uma bola de futebol de verdade.
+- Verificado lendo pixels do canvas diretamente (`getImageData` na
+  região da bola, contagem de pixels escuros mudando entre dois
+  instantes com a bola em movimento) — mais confiável que inspecionar a
+  bola visualmente numa captura de tela, já que ela é bem pequena em
+  relação ao campo.
+
+**Borrão de movimento.** `renderBallTrail` desenhava bolinhas de cor
+sólida com alpha decrescente; troquei por gradiente radial (opaco no
+centro, transparente na borda) por ponto do rastro — fica parecendo um
+borrão suave de verdade, não bolinhas com contorno duro. Também passei a
+escalar a intensidade pela velocidade atual da bola (`speedFactor =
+min(1, speed/220)`) e não desenhar nada se a bola estiver parada/quase
+parada (`speedFactor <= 0.03`) — sem isso, uma bola parada acumularia um
+halo branco permanente ao redor dela (os pontos do rastro, todos na
+mesma posição, se sobrepondo). `renderBallTrail` e `renderBall` (via
+`renderBallWithSkin`) ganharam os parâmetros novos nos call sites de
+`main.ts`.
+
+**Jogador: seta só pra fora, borda cinza clara.** Dois ajustes em
+`renderer.ts`/`theme.ts`:
+- `renderFacingArrow` agora começa exatamente na borda do círculo (não
+  mais no centro) — antes a haste da seta cruzava por cima do
+  preenchimento colorido do jogador; agora só existe a parte que fica
+  fora do círculo (haste curta + ponta), como o Mateus pediu.
+- `THEME.PLAYER_OUTLINE`: preto (`#000000`) → cinza bem claro
+  (`#D9D9DD`), único uso desse token no código (`renderPlayer`).
+
+Nenhum teste automatizado cobre esse arquivo (é desenho puro em canvas,
+mesma categoria de `renderer.ts` inteiro — sempre foi verificado
+visualmente, não por `vitest`). `npx tsc --noEmit` limpo, 157/157 testes
+passando (nada aqui mexeu em `core/`).

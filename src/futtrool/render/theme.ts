@@ -14,6 +14,6 @@ export const THEME = {
   ACCENT_BOOST: '#38BDF8',
   TEAM_1: '#F0574B', // vermelho
   TEAM_2: '#4B9BF0', // azul
-  PLAYER_OUTLINE: '#000000',
+  PLAYER_OUTLINE: '#D9D9DD', // cinza suave, quase branco — antes era preto
   PLAYER_OUTLINE_WIDTH: 5,
 };

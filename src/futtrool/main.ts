@@ -283,6 +283,7 @@ function updateMatch(dt: number): void {
 
   if (state.phase === 'playing' || prevPhase === 'playing') {
     fx.recordBallPosition(state.ball.pos);
+    fx.updateBallSpin(Math.hypot(state.ball.vel.x, state.ball.vel.y), state.ball.radius, dt);
     replayBuffer.record(state);
   }
   fx.update(dt);
@@ -374,9 +375,11 @@ function renderPlayerWithBadge(player: Parameters<typeof renderPlayer>[2], color
 
 function renderBallWithSkin(ball: Parameters<typeof renderBall>[2]): void {
   // ball-skin (seção 10.1): se houver criativo, substitui a textura padrão
-  // da bola; sem criativo, cai pro desenho normal.
+  // da bola; sem criativo, cai pro desenho normal (com o giro do Fx —
+  // durante replay usa o último giro registrado ao vivo, não recalcula
+  // por snapshot, simplificação aceitável pra um detalhe cosmético).
   if (!adManager.renderBallSkin(ctx, camera, ball.pos, ball.radius)) {
-    renderBall(ctx, camera, ball);
+    renderBall(ctx, camera, ball, fx.getBallSpin());
   }
 }
 
@@ -406,7 +409,7 @@ function render(_alpha: number): void {
   // Slots de campo (seção 10.3): sempre atrás de jogadores/bola/FX, nunca
   // por cima da jogada.
   adManager.renderFieldSlots(ctx, camera);
-  renderBallTrail(ctx, camera, fx.getBallTrail(), state.ball.radius);
+  renderBallTrail(ctx, camera, fx.getBallTrail(), state.ball.radius, Math.hypot(state.ball.vel.x, state.ball.vel.y));
 
   if (inGoalReplayWindow) {
     const snapshot = replayPlayer.getCurrentSnapshot();

@@ -18,10 +18,25 @@ export class Fx {
   private shakeTimer = 0;
   private flashTimer = 0;
   private particles: Particle[] = [];
+  private ballSpin = 0; // radianos acumulados — puramente visual, não é física de verdade
 
   recordBallPosition(pos: Vec2): void {
     this.trail.push({ x: pos.x, y: pos.y });
     if (this.trail.length > TRAIL_LENGTH) this.trail.shift();
+  }
+
+  // Gira a bola visualmente proporcional à velocidade (rolamento sem
+  // deslizar: ω = velocidade/raio) — não é a física real de uma bola 3D
+  // rolando (o jogo é top-down, esse eixo de giro não existiria numa
+  // câmera de cima de verdade), é só uma estilização pra dar sensação de
+  // movimento em vez da bola "deslizando" sem girar. `%= 2π` pra não
+  // acumular um número gigante numa partida longa.
+  updateBallSpin(speed: number, radius: number, dt: number): void {
+    this.ballSpin = (this.ballSpin + (speed / radius) * dt) % (Math.PI * 2);
+  }
+
+  getBallSpin(): number {
+    return this.ballSpin;
   }
 
   reset(): void {
@@ -29,6 +44,7 @@ export class Fx {
     this.shakeTimer = 0;
     this.flashTimer = 0;
     this.particles = [];
+    this.ballSpin = 0;
   }
 
   getBallTrail(): readonly Vec2[] {
