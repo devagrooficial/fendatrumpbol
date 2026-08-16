@@ -26,18 +26,31 @@ export const AD_SLOT_IDS: AdSlotId[] = [
 export type WorldRect = { x: number; y: number; w: number; h: number };
 
 // Placas de perímetro (spec: "placa deitada no gramado, atrás da área") —
-// posicionadas fora das linhas de fundo superior/inferior, como as
-// placas de estádio de verdade, nunca perto da boca do gol (que fica nas
-// laterais esquerda/direita, não em cima/embaixo) nem sobre jogadores.
+// posicionadas DENTRO do campo, nos cantos ao lado de cada gol (2 perto do
+// gol esquerdo, 2 perto do direito — uma acima da boca do gol, outra
+// abaixo), igual às capturas de tela de referência (ver docs/NOTES.md,
+// seção 3). Não é na lateral (linha de cima/baixo do campo todo) nem
+// sobre a boca do gol — fica no canto, na faixa entre a linha de fundo e
+// o meio-campo. Corrigido depois que o Mateus reparou, comparando com o
+// print, que a primeira versão tinha posicionado isso do lado errado
+// (fora do campo, na lateral) — o que também cortava a placa no
+// enquadramento padrão da câmera, já que ficava fora da área que o "fit"
+// mostra por padrão.
 const PITCH_BOARD_W = 320;
 const PITCH_BOARD_H = 180;
-const PITCH_BOARD_MARGIN = 10; // afastamento da linha de fundo
+const PITCH_BOARD_MARGIN_X = 15; // afastamento da linha de fundo (dentro do campo)
+const PITCH_BOARD_MARGIN_Y = 30; // afastamento da lateral de cima/baixo
 
 export const FIELD_AD_RECTS: Record<'pitch-nw' | 'pitch-ne' | 'pitch-sw' | 'pitch-se', WorldRect> = {
-  'pitch-nw': { x: 100, y: -PITCH_BOARD_MARGIN - PITCH_BOARD_H, w: PITCH_BOARD_W, h: PITCH_BOARD_H },
-  'pitch-ne': { x: FIELD.WIDTH - 100 - PITCH_BOARD_W, y: -PITCH_BOARD_MARGIN - PITCH_BOARD_H, w: PITCH_BOARD_W, h: PITCH_BOARD_H },
-  'pitch-sw': { x: 100, y: FIELD.HEIGHT + PITCH_BOARD_MARGIN, w: PITCH_BOARD_W, h: PITCH_BOARD_H },
-  'pitch-se': { x: FIELD.WIDTH - 100 - PITCH_BOARD_W, y: FIELD.HEIGHT + PITCH_BOARD_MARGIN, w: PITCH_BOARD_W, h: PITCH_BOARD_H },
+  'pitch-nw': { x: PITCH_BOARD_MARGIN_X, y: PITCH_BOARD_MARGIN_Y, w: PITCH_BOARD_W, h: PITCH_BOARD_H },
+  'pitch-sw': { x: PITCH_BOARD_MARGIN_X, y: FIELD.HEIGHT - PITCH_BOARD_MARGIN_Y - PITCH_BOARD_H, w: PITCH_BOARD_W, h: PITCH_BOARD_H },
+  'pitch-ne': { x: FIELD.WIDTH - PITCH_BOARD_MARGIN_X - PITCH_BOARD_W, y: PITCH_BOARD_MARGIN_Y, w: PITCH_BOARD_W, h: PITCH_BOARD_H },
+  'pitch-se': {
+    x: FIELD.WIDTH - PITCH_BOARD_MARGIN_X - PITCH_BOARD_W,
+    y: FIELD.HEIGHT - PITCH_BOARD_MARGIN_Y - PITCH_BOARD_H,
+    w: PITCH_BOARD_W,
+    h: PITCH_BOARD_H,
+  },
 };
 
 export const CENTER_WATERMARK_RECT: WorldRect = {

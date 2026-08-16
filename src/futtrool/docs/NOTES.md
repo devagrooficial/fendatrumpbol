@@ -543,3 +543,25 @@ isso como o alvo visual do M5/M6/M7/M8 (feel, telas, replay, anúncios).
     nada nos testes ou no playtesting ao vivo apontou desequilíbrio óbvio
     além do que já estava registrado (o gol contra "de sorte" do M8,
     física normal, não bug).
+
+## 12. Correção pós-deploy: placas de anúncio na lateral errada
+
+Depois do deploy do M9, o Mateus reparou (comparando com o print de
+referência) que as 4 placas de campo (`pitch-nw/ne/sw/se`) estavam
+posicionadas na lateral de cima/baixo do campo inteiro, fora dos limites
+do campo — não atrás/ao lado de cada gol como nas capturas de referência
+(seção 3). Isso também cortava as placas no enquadramento padrão da
+câmera, já que a área ficava fora do que o "fit" da câmera mostra por
+padrão (o corte era sintoma, não bug separado de câmera).
+
+Corrigido em `ads/slots.ts`: troquei a margem única (`PITCH_BOARD_MARGIN`,
+10px, medida a partir da lateral de cima/baixo) por duas margens
+(`PITCH_BOARD_MARGIN_X` = 15px, `PITCH_BOARD_MARGIN_Y` = 30px) e recalculei
+`FIELD_AD_RECTS` pra colocar as 4 placas **dentro** do campo, em pares nos
+cantos de cada gol — `pitch-nw`/`pitch-sw` perto do gol esquerdo (uma acima,
+uma abaixo da boca do gol), `pitch-ne`/`pitch-se` perto do gol direito.
+Confirmado ao vivo: com o `adManager` limitando a 2 placas simultâneas
+visíveis, as duas placas do lado esquerdo do campo ficam completamente
+visíveis e sem corte pela câmera, no canto certo. Nenhuma mudança de lógica
+em `adManager.ts` foi necessária — ele só consome os retângulos de
+`slots.ts`.
