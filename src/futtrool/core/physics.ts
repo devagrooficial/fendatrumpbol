@@ -20,10 +20,20 @@ function angleDiff(a: number, b: number): number {
 
 const MOVE_DEADZONE = 0.05;
 
-export function stepPlayerMovement(player: Player, move: Vec2, dt: number): Player {
+export function stepPlayerMovement(player: Player, move: Vec2, boostHeld: boolean, dt: number): Player {
   const canAct = player.stunTimer <= 0;
   const isDashing = player.dashTimer > 0;
   const moveLen = length(move);
+
+  // Turbo: só entra em ação enquanto o jogador está de fato se movendo e
+  // ainda tem combustível — segurar o botão parado não faz nada (nem
+  // gasta stamina). Some durante dash/stun, igual ao movimento normal.
+  const isBoosting = canAct && !isDashing && boostHeld && moveLen > MOVE_DEADZONE && player.boostStamina > 0;
+  const accel = isBoosting ? PHYS.PLAYER_ACCEL * PHYS.BOOST_ACCEL_MULT : PHYS.PLAYER_ACCEL;
+  const maxSpeed = isBoosting ? PHYS.PLAYER_MAX_SPEED * PHYS.BOOST_SPEED_MULT : PHYS.PLAYER_MAX_SPEED;
+  const boostStamina = isBoosting
+    ? Math.max(0, player.boostStamina - dt / PHYS.BOOST_DRAIN_S)
+    : Math.min(1, player.boostStamina + dt / PHYS.BOOST_REGEN_S);
 
   let vel = player.vel;
   let facing = player.facing;
@@ -31,7 +41,7 @@ export function stepPlayerMovement(player: Player, move: Vec2, dt: number): Play
   if (canAct && !isDashing && moveLen > MOVE_DEADZONE) {
     const dir = normalize(move);
     const magnitude = Math.min(moveLen, 1);
-    vel = add(vel, scale(dir, PHYS.PLAYER_ACCEL * magnitude * dt));
+    vel = add(vel, scale(dir, accel * magnitude * dt));
     facing = Math.atan2(dir.y, dir.x);
   }
 
@@ -42,7 +52,7 @@ export function stepPlayerMovement(player: Player, move: Vec2, dt: number): Play
   vel = scale(vel, Math.exp(-PHYS.PLAYER_DRAG * dt));
 
   if (!isDashing) {
-    vel = clampLength(vel, PHYS.PLAYER_MAX_SPEED);
+    vel = clampLength(vel, maxSpeed);
   }
 
   const pos = add(player.pos, scale(vel, dt));
@@ -56,6 +66,7 @@ export function stepPlayerMovement(player: Player, move: Vec2, dt: number): Play
     dashCooldown: Math.max(0, player.dashCooldown - dt),
     dashTimer: Math.max(0, player.dashTimer - dt),
     stunTimer: Math.max(0, player.stunTimer - dt),
+    boostStamina,
   };
 }
 

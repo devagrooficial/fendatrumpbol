@@ -80,7 +80,7 @@ function stepPlaying(
 
   if (commands.p1.dash && p1.dashCooldown <= 0 && p1.stunTimer <= 0) events.push({ type: 'dash', playerId: 'p1' });
   p1 = stepDash(p1, commands.p1.dash);
-  p1 = stepPlayerMovement(p1, commands.p1.move, dt);
+  p1 = stepPlayerMovement(p1, commands.p1.move, commands.p1.boost, dt);
   {
     const kickResult = stepKick(p1, ball, commands.p1.kickHeld, dt);
     p1 = kickResult.player;
@@ -98,7 +98,7 @@ function stepPlaying(
 
   if (commands.p2.dash && p2.dashCooldown <= 0 && p2.stunTimer <= 0) events.push({ type: 'dash', playerId: 'p2' });
   p2 = stepDash(p2, commands.p2.dash);
-  p2 = stepPlayerMovement(p2, commands.p2.move, dt);
+  p2 = stepPlayerMovement(p2, commands.p2.move, commands.p2.boost, dt);
   {
     const kickResult = stepKick(p2, ball, commands.p2.kickHeld, dt);
     p2 = kickResult.player;

@@ -23,6 +23,7 @@ function makePlayer(overrides: Partial<Player> = {}): Player {
     dashTimer: 0,
     stunTimer: 0,
     kickHeldPrev: false,
+    boostStamina: 1,
     ...overrides,
   };
 }
@@ -99,7 +100,7 @@ describe('movimento do jogador', () => {
   it('nunca ultrapassa PLAYER_MAX_SPEED sob input constante', () => {
     let player = makePlayer();
     for (let i = 0; i < 600; i++) {
-      player = stepPlayerMovement(player, { x: 1, y: 0 }, DT);
+      player = stepPlayerMovement(player, { x: 1, y: 0 }, false, DT);
     }
     const speed = Math.hypot(player.vel.x, player.vel.y);
     expect(speed).toBeLessThanOrEqual(PHYS.PLAYER_MAX_SPEED + 1e-6);
@@ -107,17 +108,65 @@ describe('movimento do jogador', () => {
 
   it('facing acompanha a direção do movimento e se mantém quando parado', () => {
     let player = makePlayer({ facing: 0 });
-    player = stepPlayerMovement(player, { x: 0, y: 1 }, DT);
+    player = stepPlayerMovement(player, { x: 0, y: 1 }, false, DT);
     expect(player.facing).toBeCloseTo(Math.PI / 2, 5);
 
     const facingAfterMove = player.facing;
-    player = stepPlayerMovement(player, { x: 0, y: 0 }, DT);
+    player = stepPlayerMovement(player, { x: 0, y: 0 }, false, DT);
     expect(player.facing).toBe(facingAfterMove);
   });
 
   it('jogador atordoado (stunTimer > 0) não acelera com o input', () => {
     const player = makePlayer({ stunTimer: 1, vel: { x: 0, y: 0 } });
-    const next = stepPlayerMovement(player, { x: 1, y: 0 }, DT);
+    const next = stepPlayerMovement(player, { x: 1, y: 0 }, false, DT);
+    expect(next.vel.x).toBe(0);
+  });
+});
+
+describe('turbo (boost)', () => {
+  it('segurando o boost com combustível, ultrapassa PLAYER_MAX_SPEED até o limite do turbo', () => {
+    // Só ticks o bastante pra atingir o teto de velocidade (o clamp já
+    // segura isso em poucos ticks) sem esgotar BOOST_DRAIN_S de combustível
+    // — senão o turbo desliga sozinho no meio do teste e o resultado deixa
+    // de refletir "boostando o tempo todo".
+    let player = makePlayer();
+    const ticks = Math.floor(PHYS.BOOST_DRAIN_S / DT) - 10;
+    for (let i = 0; i < ticks; i++) {
+      player = stepPlayerMovement(player, { x: 1, y: 0 }, true, DT);
+    }
+    const speed = Math.hypot(player.vel.x, player.vel.y);
+    expect(speed).toBeGreaterThan(PHYS.PLAYER_MAX_SPEED);
+    expect(speed).toBeLessThanOrEqual(PHYS.PLAYER_MAX_SPEED * PHYS.BOOST_SPEED_MULT + 1e-6);
+  });
+
+  it('drena o combustível enquanto boosta em movimento e recarrega quando solta', () => {
+    let player = makePlayer({ boostStamina: 1 });
+    player = stepPlayerMovement(player, { x: 1, y: 0 }, true, DT);
+    expect(player.boostStamina).toBeCloseTo(1 - DT / PHYS.BOOST_DRAIN_S, 5);
+
+    const drained = player.boostStamina;
+    player = stepPlayerMovement(player, { x: 1, y: 0 }, false, DT);
+    expect(player.boostStamina).toBeGreaterThan(drained);
+  });
+
+  it('sem combustível, segurar o boost não ultrapassa PLAYER_MAX_SPEED', () => {
+    let player = makePlayer({ boostStamina: 0 });
+    for (let i = 0; i < 600; i++) {
+      player = stepPlayerMovement(player, { x: 1, y: 0 }, true, DT);
+    }
+    const speed = Math.hypot(player.vel.x, player.vel.y);
+    expect(speed).toBeLessThanOrEqual(PHYS.PLAYER_MAX_SPEED + 1e-6);
+  });
+
+  it('segurar o boost parado (sem input de movimento) não gasta combustível', () => {
+    const player = makePlayer({ boostStamina: 1 });
+    const next = stepPlayerMovement(player, { x: 0, y: 0 }, true, DT);
+    expect(next.boostStamina).toBe(1);
+  });
+
+  it('jogador atordoado não boosta mesmo segurando o botão', () => {
+    const player = makePlayer({ stunTimer: 1, boostStamina: 1 });
+    const next = stepPlayerMovement(player, { x: 1, y: 0 }, true, DT);
     expect(next.vel.x).toBe(0);
   });
 });

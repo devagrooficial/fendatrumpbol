@@ -14,6 +14,7 @@ export type AiProfile = {
   predictionHorizon: number; // segundos
   chargeAccuracy: number; // 0..1, o quanto acerta a carga ideal do chute
   dashUsage: number; // 0..1, chance de usar o dash quando a situação permite
+  boostUsage: number; // 0..1, chance de segurar o turbo quando está indo atrás de algo e tem combustível
   aggression: number; // 0..1, disputa corpo a corpo
   idleChance: number; // 0..1, chance de hesitar por 0.2-0.5s a cada avaliação
   defensivePositioning: AiDefensivePositioning;
@@ -30,6 +31,7 @@ export const AI_PROFILES: Record<AiDifficulty, AiProfile> = {
     predictionHorizon: 0.15,
     chargeAccuracy: 0.55,
     dashUsage: 0.1,
+    boostUsage: 0.15,
     aggression: 0.25,
     idleChance: 0.14,
     defensivePositioning: 'weak',
@@ -44,6 +46,7 @@ export const AI_PROFILES: Record<AiDifficulty, AiProfile> = {
     predictionHorizon: 0.4,
     chargeAccuracy: 0.8,
     dashUsage: 0.45,
+    boostUsage: 0.5,
     aggression: 0.6,
     idleChance: 0.05,
     defensivePositioning: 'holdLine',
@@ -58,6 +61,7 @@ export const AI_PROFILES: Record<AiDifficulty, AiProfile> = {
     predictionHorizon: 0.75,
     chargeAccuracy: 0.96,
     dashUsage: 0.85,
+    boostUsage: 0.85,
     aggression: 0.9,
     idleChance: 0.0,
     defensivePositioning: 'anticipate',

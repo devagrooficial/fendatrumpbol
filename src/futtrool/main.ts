@@ -87,6 +87,7 @@ function getP1Command(tick: number): Command {
     move: touchMag > keyboardMag ? fromTouch.move : fromKeyboard.move,
     kickHeld: fromKeyboard.kickHeld || fromTouch.kickHeld,
     dash: fromKeyboard.dash || fromTouch.dash,
+    boost: fromKeyboard.boost || fromTouch.boost,
   };
 }
 
@@ -426,7 +427,7 @@ function render(_alpha: number): void {
   renderMatchHud(ctx, window.innerWidth, window.innerHeight, state, `IA: ${aiState.fsmState}`);
 
   if (touch && appScreen === 'match' && !inGoalReplayWindow) {
-    renderTouchControls(ctx, touch.getLayout(), touch.joystickVisual, state.players.p1.kickCharge);
+    renderTouchControls(ctx, touch.getLayout(), touch.joystickVisual, state.players.p1.kickCharge, state.players.p1.boostStamina);
   }
 }
 

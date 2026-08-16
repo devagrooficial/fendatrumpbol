@@ -20,6 +20,7 @@ export type Player = {
   // step() continuar uma função pura sem estado externo escondido:
   dashTimer: number; // segundos restantes do impulso ativo do dash (spec 3.4: DASH_DURATION) — enquanto > 0, ignora o clamp de PLAYER_MAX_SPEED, deixando o arrasto dissipar o burst naturalmente
   kickHeldPrev: boolean; // valor de kickHeld no tick anterior, pra detectar a borda de soltar o botão (carrega -> chuta) sem precisar comparar Commands entre ticks
+  boostStamina: number; // 0..1 — combustível do turbo (segurar o botão de boost pra correr mais rápido); drena enquanto usa, recarrega sozinho quando não usa (ver PHYS.BOOST_*)
 };
 
 export type Ball = {
@@ -78,4 +79,5 @@ export type Command = {
   move: Vec2; // vetor normalizado, magnitude 0..1
   kickHeld: boolean; // segurar carrega, soltar chuta
   dash: boolean;
+  boost: boolean; // segurar pra correr mais rápido enquanto durar o combustível (boostStamina)
 };

@@ -81,5 +81,6 @@ export function playerFromSnapshot(id: PlayerId, snapshot: ReplaySnapshot): Play
     dashTimer: 0,
     stunTimer: p.stunned ? 1 : 0,
     kickHeldPrev: false,
+    boostStamina: 1,
   };
 }

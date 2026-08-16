@@ -10,14 +10,17 @@ const JOYSTICK_RADIUS_PX = 60;
 const JOYSTICK_DEADZONE = 0.12; // seção 6: "zona morta de 12% do raio"
 const KICK_BUTTON_RADIUS_PX = 58;
 const DASH_BUTTON_RADIUS_PX = 34;
+const BOOST_BUTTON_RADIUS_PX = 40;
 
 export type TouchLayout = {
   kickButton: { x: number; y: number; radius: number };
   dashButton: { x: number; y: number; radius: number };
+  boostButton: { x: number; y: number; radius: number };
 };
 
-// Botão de chute no canto inferior direito, dash um pouco acima — layout
-// recalculado a cada resize a partir do tamanho real da viewport.
+// Botão de chute no canto inferior direito, dash um pouco acima, turbo à
+// esquerda do chute (mesma altura) — layout recalculado a cada resize a
+// partir do tamanho real da viewport.
 export function computeTouchLayout(viewportW: number, viewportH: number): TouchLayout {
   const margin = 28;
   const kickX = viewportW - margin - KICK_BUTTON_RADIUS_PX;
@@ -25,6 +28,7 @@ export function computeTouchLayout(viewportW: number, viewportH: number): TouchL
   return {
     kickButton: { x: kickX, y: kickY, radius: KICK_BUTTON_RADIUS_PX },
     dashButton: { x: kickX - 10, y: kickY - KICK_BUTTON_RADIUS_PX - DASH_BUTTON_RADIUS_PX - 18, radius: DASH_BUTTON_RADIUS_PX },
+    boostButton: { x: kickX - KICK_BUTTON_RADIUS_PX - BOOST_BUTTON_RADIUS_PX - 22, y: kickY, radius: BOOST_BUTTON_RADIUS_PX },
   };
 }
 
@@ -41,6 +45,8 @@ export class TouchInput {
   private kickPointerId: number | null = null;
   private kickHeld = false;
   private dashPending = false;
+  private boostPointerId: number | null = null;
+  private boostHeld = false;
 
   // Exposto só pra o renderer desenhar o joystick/botões no lugar certo.
   joystickVisual: { anchor: Vec2; knob: Vec2 } | null = null;
@@ -88,6 +94,13 @@ export class TouchInput {
 
     if (distance(p, this.layout.dashButton) <= this.layout.dashButton.radius) {
       this.dashPending = true;
+      this.trySetPointerCapture(e.pointerId);
+      return;
+    }
+
+    if (distance(p, this.layout.boostButton) <= this.layout.boostButton.radius) {
+      this.boostPointerId = e.pointerId;
+      this.boostHeld = true;
       this.trySetPointerCapture(e.pointerId);
       return;
     }
@@ -143,12 +156,16 @@ export class TouchInput {
       this.kickPointerId = null;
       this.kickHeld = false;
     }
+    if (this.boostPointerId === e.pointerId) {
+      this.boostPointerId = null;
+      this.boostHeld = false;
+    }
   };
 
   getCommand(tick: number): Command {
     const dash = this.dashPending;
     this.dashPending = false;
-    return { tick, move: this.moveVector, kickHeld: this.kickHeld, dash };
+    return { tick, move: this.moveVector, kickHeld: this.kickHeld, dash, boost: this.boostHeld };
   }
 
   getLayout(): TouchLayout {

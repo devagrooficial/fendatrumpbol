@@ -710,3 +710,63 @@ notas em sequência sem `setTimeout`, dei ao `tone()` um parâmetro
 nativo do Web Audio, preciso por sample). Não tem teste automatizado pra
 áudio (assim como o resto do `Audio.ts`); validei rodando o evento de gol
 de verdade no navegador e conferindo que não lança exceção no console.
+
+## 17. Seta de direção, turbo (boost) e partida maior (7 gols / 4min)
+
+Três pedidos do Mateus juntos:
+
+**Seta em vez de linha.** `renderFacingArrow` (novo, em `render/
+renderer.ts`) desenha uma haste + ponta triangular em vez da linha reta
+original — mesma ideia (mostra facing/mira do chute), acabamento mais
+"profissional". Confirmado ao vivo: a seta aparece nitidamente nos dois
+jogadores durante uma partida de verdade (inclusive na tela de replay de
+gol).
+
+**Turbo (correr mais rápido segurando um botão).** Botão novo, separado
+do dash — o dash já existente é um impulso instantâneo com stun em quem é
+atingido (arma de combate corpo a corpo); o turbo é corrida sustentada
+enquanto segura, sem interagir com o adversário. Design:
+
+- `Player.boostStamina` (0..1, novo campo, igual ao `kickCharge`): começa
+  em 1 (cheio) a cada kickoff (também depois de gol, já que
+  `createKickoffFormation` roda de novo). Drena em `PHYS.BOOST_DRAIN_S`
+  (1.5s) de uso contínuo, recarrega sozinho em `PHYS.BOOST_REGEN_S` (3s,
+  o dobro — de propósito, pra ser "usar de vez em quando" e não botão de
+  correr sempre mais rápido, como o Mateus pediu) quando não está em uso.
+  Só drena se o jogador estiver de fato se movendo (segurar parado não
+  gasta) e com `canAct`/sem estar em dash.
+- `Command.boost: boolean` (segurado, não borda como o dash) — novo campo
+  em todo lugar que constrói `Command` (input, IA, testes).
+- `physics.ts`: `stepPlayerMovement` ganhou um parâmetro `boostHeld`;
+  enquanto ativo, usa `PHYS.BOOST_ACCEL_MULT`/`BOOST_SPEED_MULT` (1.2x/
+  1.35x) em vez dos valores normais de aceleração/velocidade máxima.
+- Input: tecla nova (`ControlLeft` pro p1, `ShiftRight` pro p2 —
+  `keyboard.ts`) e botão touch novo "TURBO" à esquerda do PONTAPÉ
+  (`joystick.ts` + `renderer.ts`), com anel de combustível ao redor
+  (cheio = sem anel, pra não poluir a tela; drenando/recarregando mostra
+  a fração restante, mesmo padrão visual do anel de carga do chute).
+  Também desenhei o mesmo anel ao redor do próprio jogador em campo
+  (`renderPlayer`), não só no botão.
+- IA: novo campo por perfil `AiProfile.boostUsage` (0..1, tabela em
+  `ai/profiles.ts`: Novato 0.15, Profissional 0.5, Lenda 0.85) — decidido
+  junto do `dashUsage` em `brain.ts`, rolagem independente (pode usar os
+  dois, nenhum, ou só um).
+- Testado: 5 testes novos em `physics.test.ts` (ultrapassa
+  PLAYER_MAX_SPEED com combustível, respeita o teto do turbo, drena/
+  recarrega, não gasta parado, não funciona atordoado) + confirmado ao
+  vivo (anel de combustível no jogador e no botão touch, refletindo a
+  stamina correta).
+
+**Partida maior.** `MATCH.GOALS_TO_WIN` 4→7, `MATCH.DURATION_MS` 3→4
+minutos (`core/constants.ts`) — a lógica de "acaba no que vier primeiro,
+gols ou tempo" já existia (`simulation.ts`), só mudei os números. HUD já
+lê `GOALS_TO_WIN` dinamicamente pros pingos de placar (`ui/hud.ts`), não
+precisou mudar nada lá — confirmado ao vivo mostrando 7 pingos por lado.
+Ajustei o teto de segurança (`MAX_TICKS`) do teste headless de
+balanceamento de IA em `ai.test.ts`, que simula partidas completas, pra
+não cortar partidas de verdade que agora podem durar até 4min +
+prorrogação.
+
+Cobertura de `core/` seguiu ~99.5% depois dessas mudanças (`vitest
+--coverage`), sem nenhum caminho de física/regra novo sem teste. 157
+testes no total (5 novos deste marco).

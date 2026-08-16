@@ -11,6 +11,7 @@ export const THEME = {
   UI_BG: '#0B0B0E',
   ACCENT_PRIMARY: '#E93D82',
   ACCENT_SECONDARY: '#4ADE80',
+  ACCENT_BOOST: '#38BDF8',
   TEAM_1: '#F0574B', // vermelho
   TEAM_2: '#4B9BF0', // azul
   PLAYER_OUTLINE: '#000000',

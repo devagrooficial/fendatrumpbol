@@ -43,6 +43,18 @@ export const PHYS = {
   DASH_DURATION: 0.16,
   DASH_COOLDOWN: 2.5,
   DASH_STUN_ON_HIT: 0.4, // stun aplicado no adversário atingido
+
+  // Turbo (botão separado do dash): enquanto segurado e com combustível,
+  // aumenta aceleração/velocidade máxima — diferente do dash (impulso
+  // instantâneo com stun em quem é atingido), isso é corrida sustentada.
+  // O combustível (Player.boostStamina, 0..1) drena em BOOST_DRAIN_S
+  // segundos de uso contínuo e recarrega sozinho, mais devagar
+  // (BOOST_REGEN_S), quando não está em uso — pra ser "usar de vez em
+  // quando", não um botão de correr sempre mais rápido.
+  BOOST_SPEED_MULT: 1.35,
+  BOOST_ACCEL_MULT: 1.2,
+  BOOST_DRAIN_S: 1.5,
+  BOOST_REGEN_S: 3,
 };
 
 // Replay de gol (seção 8): últimos REPLAY_CONTENT_S segundos de conteúdo
@@ -55,8 +67,8 @@ export const REPLAY = {
 };
 
 export const MATCH = {
-  DURATION_MS: 3 * 60 * 1000,
-  GOALS_TO_WIN: 4,
+  DURATION_MS: 4 * 60 * 1000,
+  GOALS_TO_WIN: 7,
   GOAL_FREEZE_MS: 1200,
   // A seção 4 da spec diz "replay automático (2,5s)", mas a seção 8 pede
   // 3s de conteúdo a 0.6x — 3s de conteúdo a 0.6x levam 5s de relógio pra

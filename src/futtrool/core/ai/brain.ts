@@ -50,7 +50,7 @@ export function createAiState(seed: number): AiState {
 const EVAL_INTERVAL_MS = 100;
 const IDLE_MIN_S = 0.2;
 const IDLE_MAX_S = 0.5;
-const NO_COMMAND: Omit<Command, 'tick'> = { move: { x: 0, y: 0 }, kickHeld: false, dash: false };
+const NO_COMMAND: Omit<Command, 'tick'> = { move: { x: 0, y: 0 }, kickHeld: false, dash: false, boost: false };
 
 function goalCenter(side: 'left' | 'right'): Vec2 {
   return { x: side === 'left' ? 0 : FIELD.WIDTH, y: FIELD.HEIGHT / 2 };
@@ -308,7 +308,7 @@ export function decideCommand(
     const releasing = holdSecondsElapsed >= kicking.holdSecondsTarget;
 
     return {
-      command: { tick: world.tick, move: scale(kicking.aimDir, 0.15), kickHeld: !releasing, dash: false },
+      command: { tick: world.tick, move: scale(kicking.aimDir, 0.15), kickHeld: !releasing, dash: false, boost: false },
       aiState: { ...baseAiState, kicking: releasing ? null : { ...kicking, holdSecondsElapsed } },
     };
   }
@@ -324,8 +324,18 @@ export function decideCommand(
     dash = dashRoll.value < profile.dashUsage;
   }
 
+  // Turbo: perseguindo algo de verdade (não em micro-ajustes de
+  // posicionamento) e com combustível de sobra — decidido junto do dash,
+  // mas é uma rolagem independente (pode usar os dois, ou nenhum).
+  let boost = false;
+  if (self.boostStamina > 0.2 && length(toTarget) > PHYS.PLAYER_RADIUS * 3) {
+    const boostRoll = nextRandom(rngState);
+    rngState = boostRoll.nextState;
+    boost = boostRoll.value < profile.boostUsage;
+  }
+
   return {
-    command: { tick: world.tick, move, kickHeld: false, dash },
+    command: { tick: world.tick, move, kickHeld: false, dash, boost },
     aiState: { ...baseAiState, rngState },
   };
 }

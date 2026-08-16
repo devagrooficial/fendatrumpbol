@@ -122,6 +122,41 @@ function drawBoundaryAndCenter(ctx: CanvasRenderingContext2D, camera: Camera): v
   ctx.stroke();
 }
 
+// Seta de direção (facing) — haste + ponta triangular, no lugar da linha
+// reta original: dá uma leitura mais clara de "pra onde esse jogador está
+// mirando" (dobra como indicador do chute) com acabamento mais parecido
+// com HUD de jogo de verdade.
+function renderFacingArrow(ctx: CanvasRenderingContext2D, p: { x: number; y: number }, r: number, facing: number): void {
+  const dirX = Math.cos(facing);
+  const dirY = Math.sin(facing);
+  const shaftLen = r * 0.9;
+  const headLen = r * 0.65;
+  const headHalfWidth = r * 0.3;
+
+  const shaftEndX = p.x + dirX * shaftLen;
+  const shaftEndY = p.y + dirY * shaftLen;
+  const tipX = p.x + dirX * (shaftLen + headLen);
+  const tipY = p.y + dirY * (shaftLen + headLen);
+  const perpX = -dirY;
+  const perpY = dirX;
+
+  ctx.beginPath();
+  ctx.moveTo(p.x, p.y);
+  ctx.lineTo(shaftEndX, shaftEndY);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)';
+  ctx.lineWidth = Math.max(2, r * 0.14);
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(tipX, tipY);
+  ctx.lineTo(shaftEndX + perpX * headHalfWidth, shaftEndY + perpY * headHalfWidth);
+  ctx.lineTo(shaftEndX - perpX * headHalfWidth, shaftEndY - perpY * headHalfWidth);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+  ctx.fill();
+}
+
 export function renderPlayer(ctx: CanvasRenderingContext2D, camera: Camera, player: Player, color: string): void {
   const p = camera.worldToScreen(player.pos.x, player.pos.y);
   const r = camera.worldLengthToScreen(player.radius);
@@ -134,20 +169,23 @@ export function renderPlayer(ctx: CanvasRenderingContext2D, camera: Camera, play
   ctx.strokeStyle = THEME.PLAYER_OUTLINE;
   ctx.stroke();
 
-  // Indicador de facing — dobra como mira do chute.
-  const facingLen = r * 1.5;
-  ctx.beginPath();
-  ctx.moveTo(p.x, p.y);
-  ctx.lineTo(p.x + Math.cos(player.facing) * facingLen, p.y + Math.sin(player.facing) * facingLen);
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-  ctx.lineWidth = Math.max(2, r * 0.15);
-  ctx.stroke();
+  renderFacingArrow(ctx, p, r, player.facing);
 
   // Anel de carga do chute.
   if (player.kickCharge > 0) {
     ctx.beginPath();
     ctx.arc(p.x, p.y, r + 6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * player.kickCharge);
     ctx.strokeStyle = THEME.ACCENT_PRIMARY;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+
+  // Anel de combustível do turbo — só aparece enquanto não está cheio
+  // (em uso ou recarregando), pra não poluir a tela o tempo todo.
+  if (player.boostStamina < 0.999) {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r + 10, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * player.boostStamina);
+    ctx.strokeStyle = THEME.ACCENT_BOOST;
     ctx.lineWidth = 3;
     ctx.stroke();
   }
@@ -212,15 +250,17 @@ export function renderGoalFlash(ctx: CanvasRenderingContext2D, viewportW: number
 }
 
 // Controles touch (spec seção 6): joystick flutuante + botão PONTAPÉ com
-// anel de carga + botão de dash. Desenhados por cima de tudo, em espaço de
-// tela (não de mundo) — por isso não usam a câmera.
+// anel de carga + botão de dash + botão de turbo com anel de combustível.
+// Desenhados por cima de tudo, em espaço de tela (não de mundo) — por isso
+// não usam a câmera.
 export function renderTouchControls(
   ctx: CanvasRenderingContext2D,
   layout: TouchLayout,
   joystick: { anchor: Vec2; knob: Vec2 } | null,
   kickCharge: number,
+  boostStamina: number,
 ): void {
-  const { kickButton, dashButton } = layout;
+  const { kickButton, dashButton, boostButton } = layout;
 
   ctx.beginPath();
   ctx.arc(kickButton.x, kickButton.y, kickButton.radius, 0, Math.PI * 2);
@@ -252,6 +292,25 @@ export function renderTouchControls(
   ctx.font = "800 10px 'Segoe UI', system-ui, sans-serif";
   ctx.fillStyle = 'rgba(253, 246, 255, 0.85)';
   ctx.fillText('DASH', dashButton.x, dashButton.y);
+  ctx.textBaseline = 'alphabetic';
+
+  ctx.beginPath();
+  ctx.arc(boostButton.x, boostButton.y, boostButton.radius, 0, Math.PI * 2);
+  ctx.fillStyle = boostStamina > 0 ? 'rgba(56, 189, 248, 0.28)' : 'rgba(120, 120, 120, 0.2)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(253, 246, 255, 0.5)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(boostButton.x, boostButton.y, boostButton.radius + 6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * boostStamina);
+  ctx.strokeStyle = THEME.ACCENT_BOOST;
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = "800 11px 'Segoe UI', system-ui, sans-serif";
+  ctx.fillStyle = 'rgba(253, 246, 255, 0.85)';
+  ctx.fillText('TURBO', boostButton.x, boostButton.y);
   ctx.textBaseline = 'alphabetic';
 
   if (joystick) {

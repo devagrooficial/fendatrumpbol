@@ -59,6 +59,7 @@ export function createKickoffPlayer(id: PlayerId, x: number, facing: number): Pl
     dashTimer: 0,
     stunTimer: 0,
     kickHeldPrev: false,
+    boostStamina: 1,
   };
 }
 

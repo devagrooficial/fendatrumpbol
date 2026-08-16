@@ -6,7 +6,10 @@ import { AI_PROFILES, type AiProfile } from '../core/ai/profiles';
 import type { GameState } from '../core/types';
 
 const DT = 1 / 60;
-const MAX_TICKS = 60 * 60 * 4; // 4 min de partida simulada — teto de segurança
+// Teto de segurança: MATCH.DURATION_MS (4min) + possível prorrogação
+// (OVERTIME_MS, 60s) + folga — evita loop infinito no teste sem cortar
+// partidas que legitimamente vão até o fim.
+const MAX_TICKS = 60 * 60 * 6;
 
 function playHeadlessMatch(profileP1: AiProfile, profileP2: AiProfile, seed: number): GameState {
   let state = createMatchState(seed, 1500);
@@ -35,7 +38,7 @@ describe('IA — comportamento básico', () => {
       expect(Number.isFinite(command.move.x)).toBe(true);
       expect(Number.isFinite(command.move.y)).toBe(true);
       expect(Math.hypot(command.move.x, command.move.y)).toBeLessThanOrEqual(1 + 1e-6);
-      state = step(state, { p1: command, p2: { tick: state.tick, move: { x: 0, y: 0 }, kickHeld: false, dash: false } }, DT).state;
+      state = step(state, { p1: command, p2: { tick: state.tick, move: { x: 0, y: 0 }, kickHeld: false, dash: false, boost: false } }, DT).state;
     }
   });
 
@@ -46,6 +49,7 @@ describe('IA — comportamento básico', () => {
     expect(command.move).toEqual({ x: 0, y: 0 });
     expect(command.kickHeld).toBe(false);
     expect(command.dash).toBe(false);
+    expect(command.boost).toBe(false);
   });
 
   it('nunca manda magnitude de movimento acima de speedFactor', () => {
@@ -55,7 +59,7 @@ describe('IA — comportamento básico', () => {
       const { command, aiState } = decideCommand(state, ai, AI_PROFILES.novato, 'p1', DT);
       ai = aiState;
       expect(Math.hypot(command.move.x, command.move.y)).toBeLessThanOrEqual(AI_PROFILES.novato.speedFactor + 1e-6);
-      state = step(state, { p1: command, p2: { tick: state.tick, move: { x: 0, y: 0 }, kickHeld: false, dash: false } }, DT).state;
+      state = step(state, { p1: command, p2: { tick: state.tick, move: { x: 0, y: 0 }, kickHeld: false, dash: false, boost: false } }, DT).state;
     }
   });
 });

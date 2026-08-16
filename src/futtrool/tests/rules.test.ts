@@ -4,7 +4,7 @@ import { step } from '../core/simulation';
 import { FIELD, MATCH, PHYS, STALL } from '../core/constants';
 import type { Ball, Command, GameState, Player, PlayerId } from '../core/types';
 
-const NO_MOVE: Command = { tick: 0, move: { x: 0, y: 0 }, kickHeld: false, dash: false };
+const NO_MOVE: Command = { tick: 0, move: { x: 0, y: 0 }, kickHeld: false, dash: false, boost: false };
 const DT = 1 / 60;
 
 function commands(overrides: Partial<Record<PlayerId, Command>> = {}): Record<PlayerId, Command> {

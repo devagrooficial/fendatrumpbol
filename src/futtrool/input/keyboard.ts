@@ -1,7 +1,7 @@
 // Controle por teclado dos dois jogadores no mesmo teclado — só pra M2/M3,
 // pra testar a sensação da física antes do M5 (joystick touch + botões).
-// P1: WASD / Espaço (chute) / Shift esquerdo (dash).
-// P2: setas / Enter (chute) / Ctrl direito (dash).
+// P1: WASD / Espaço (chute) / Shift esquerdo (dash) / Ctrl esquerdo (turbo).
+// P2: setas / Enter (chute) / Ctrl direito (dash) / Shift direito (turbo).
 
 import type { Command, PlayerId, Vec2 } from '../core/types';
 
@@ -12,6 +12,7 @@ type Binding = {
   right: string;
   kick: string;
   dash: string;
+  boost: string;
 };
 
 const P1_BINDING: Binding = {
@@ -21,6 +22,7 @@ const P1_BINDING: Binding = {
   right: 'KeyD',
   kick: 'Space',
   dash: 'ShiftLeft',
+  boost: 'ControlLeft',
 };
 
 const P2_BINDING: Binding = {
@@ -30,10 +32,11 @@ const P2_BINDING: Binding = {
   right: 'ArrowRight',
   kick: 'Enter',
   dash: 'ControlRight',
+  boost: 'ShiftRight',
 };
 
 const ALL_CODES = new Set(
-  [P1_BINDING, P2_BINDING].flatMap((b) => [b.up, b.down, b.left, b.right, b.kick, b.dash]),
+  [P1_BINDING, P2_BINDING].flatMap((b) => [b.up, b.down, b.left, b.right, b.kick, b.dash, b.boost]),
 );
 
 export class KeyboardInput {
@@ -78,6 +81,7 @@ export class KeyboardInput {
       move: normalizedMove,
       kickHeld: this.pressed.has(binding.kick),
       dash,
+      boost: this.pressed.has(binding.boost),
     };
   }
 
