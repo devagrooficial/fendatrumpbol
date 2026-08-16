@@ -1,7 +1,6 @@
 import { t } from '../../i18n';
 import { Audio } from '../../audio/Audio';
 import type { LevelProgress, MatchOutcome, MatchReward } from '../../progression/economy';
-import { createAdSlotImg, hideAdSlot, showAdSlot } from '../adSlot';
 
 export type EndGameData = {
   outcome: MatchOutcome;
@@ -40,7 +39,6 @@ export class EndGameScreen {
   private readonly levelFillEl: HTMLDivElement;
   private readonly exitButton: HTMLButtonElement;
   private readonly rematchButton: HTMLButtonElement;
-  private readonly bannerAd: HTMLImageElement;
 
   constructor(onExit: () => void, onRematch: () => void) {
     this.root = document.createElement('div');
@@ -77,16 +75,12 @@ export class EndGameScreen {
             <span class="endgame-xp-bar__label" data-level-value></span>
           </div>
         </div>
-        <div data-banner-ad-slot></div>
         <div class="screen__button-row">
           <button type="button" class="screen__button screen__button--secondary" data-exit></button>
           <button type="button" class="screen__button screen__button--outline" data-rematch></button>
         </div>
       </div>
     `;
-
-    this.bannerAd = createAdSlotImg('endgame-banner', 'ad-slot ad-slot--endgame-banner');
-    this.root.querySelector('[data-banner-ad-slot]')?.replaceWith(this.bannerAd);
 
     const scoreP1 = this.root.querySelector<HTMLSpanElement>('[data-score-p1]');
     const scoreP2 = this.root.querySelector<HTMLSpanElement>('[data-score-p2]');
@@ -181,7 +175,6 @@ export class EndGameScreen {
     this.gainFillEl.style.width = '0%';
     this.levelFillEl.style.width = '0%';
     this.root.classList.add('screen--visible');
-    showAdSlot(this.bannerAd, 'endgame-banner');
 
     requestAnimationFrame(() => {
       this.gainFillEl.style.width = '100%';
@@ -192,10 +185,5 @@ export class EndGameScreen {
 
   hide(): void {
     this.root.classList.remove('screen--visible');
-    hideAdSlot('endgame-banner');
-  }
-
-  refreshAd(): void {
-    showAdSlot(this.bannerAd, 'endgame-banner');
   }
 }

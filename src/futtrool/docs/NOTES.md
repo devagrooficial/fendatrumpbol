@@ -636,3 +636,40 @@ movendo a ação pro outro lado, as duas do lado direito — ambas totalmente
 visíveis, sem corte pela câmera, e a altura do campo em tela não encolheu
 mais (volta a usar a tela inteira na vertical). Ajustei
 `camera.test.ts` de novo pra refletir o eixo trocado.
+
+## 15. Remove os slots de anúncio de tela do menu e do fim de jogo
+
+O Mateus pediu pra tirar o "Espaço publicitário — menu-footer" (no menu)
+e o "Gostou da partida? Anuncie aqui." (no modal de fim de jogo) — esses
+textos são os criativos "house" (fallback) configurados em
+`public/futtrool/ads.config.json` pros slots `menu-footer` e
+`endgame-banner`, servidos como SVG (`public/futtrool/ads/
+house-menu-footer.svg` e `house-endgame-banner.svg`). Ele não quer esse
+espaço/convite visível publicamente nessas duas telas.
+
+Removido só a renderização desses dois slots nas duas telas — não mexi no
+resto do sistema de anúncios (as placas de campo, o `center-watermark`,
+`scoreboard-sponsor`, `loading-hero` da matchmaking e `replay-lower-third`
+continuam normais):
+
+- `ui/screens/MenuScreen.ts`: tirei o `<div data-footer-ad-slot>`, o
+  `footerAd` (`createAdSlotImg('menu-footer', ...)`), as chamadas de
+  `showAdSlot`/`hideAdSlot` em `show()`/`hide()`, e o método `refreshAd()`.
+- `ui/screens/EndGameScreen.ts`: mesma coisa pro `bannerAd`
+  (`endgame-banner`).
+- `main.ts`: tirei as chamadas a `menuScreen.refreshAd()` e
+  `endGameScreen.refreshAd()` no `.then()` do `adsConfigPromise` (só
+  sobrou `matchmakingScreen.refreshAd()`, que ainda usa `loading-hero`).
+
+Não toquei em `ads/types.ts`, `ads/slots.ts` (`AD_SLOT_IDS` continua com
+os 12 ids) nem em `ads.config.json` — os slot ids `menu-footer` e
+`endgame-banner` continuam existindo no sistema (então `adManager.onClick`
+etc. continuam funcionando, os testes de `ads.test.ts` não quebraram),
+só não são mais renderizados em tela nenhuma. Ficam órfãos por enquanto;
+dava pra removê-los de vez do modelo de dados, mas isso exigiria mudar o
+tipo `AdSlotId`, o `ads.config.json` e o teste que conta 12 slots — mais
+mudança do que o pedido, que era só tirar isso dessas duas telas.
+
+Testado ao vivo: menu sem o rodapé de anúncio, modal de fim de jogo sem o
+banner. `npx tsc --noEmit` limpo, 152/152 testes passando (nenhum teste
+dependia da renderização desses dois slots nessas telas especificamente).

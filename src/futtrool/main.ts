@@ -238,15 +238,15 @@ const replayOverlay = new ReplayOverlay(reactToGoalReplay, saveGoalReplay, onRep
 goToMenu();
 
 // O fetch quase sempre ainda está em voo quando o menu já apareceu (a
-// primeira tela do app) — sem isso, o menu-footer ficaria vazio até a
-// próxima troca de tela. Só atualiza o anúncio da tela ATUALMENTE visível,
-// pra não disparar impression de um slot que o jogador não está vendo.
+// primeira tela do app) — sem isso, o loading-hero da matchmaking ficaria
+// vazio até a próxima troca de tela. Só atualiza o anúncio da tela
+// ATUALMENTE visível, pra não disparar impression de um slot que o
+// jogador não está vendo. Menu e fim de jogo não têm mais slot de
+// anúncio de tela (ver docs/NOTES.md).
 adsConfigPromise
   .then((config) => {
     adManager.load(config);
-    if (appScreen === 'menu') menuScreen.refreshAd();
-    else if (appScreen === 'matchmaking') matchmakingScreen.refreshAd();
-    else if (appScreen === 'endgame') endGameScreen.refreshAd();
+    if (appScreen === 'matchmaking') matchmakingScreen.refreshAd();
   })
   .catch((err) => {
     if (import.meta.env.DEV) console.error('[futtrool] falha ao carregar ads.config.json', err);

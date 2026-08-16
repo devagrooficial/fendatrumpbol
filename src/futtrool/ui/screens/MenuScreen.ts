@@ -1,14 +1,12 @@
 import { t } from '../../i18n';
 import { Audio } from '../../audio/Audio';
 import type { ProgressionState } from '../../progression/storage';
-import { createAdSlotImg, hideAdSlot, showAdSlot } from '../adSlot';
 
 export class MenuScreen {
   private readonly root: HTMLDivElement;
   private readonly levelEl: HTMLSpanElement;
   private readonly coinsEl: HTMLSpanElement;
   private readonly soundToggle: HTMLButtonElement;
-  private readonly footerAd: HTMLImageElement;
 
   constructor(onPlay: () => void, onReplays: () => void) {
     this.root = document.createElement('div');
@@ -29,12 +27,8 @@ export class MenuScreen {
         <button type="button" class="screen__button screen__button--secondary" data-replays>${t('menu.replays')}</button>
         <p class="screen__placeholder-note" data-placeholder-note></p>
         <button type="button" class="screen__toggle" data-sound></button>
-        <div data-footer-ad-slot></div>
       </div>
     `;
-
-    this.footerAd = createAdSlotImg('menu-footer', 'ad-slot ad-slot--menu-footer');
-    this.root.querySelector('[data-footer-ad-slot]')?.replaceWith(this.footerAd);
 
     const levelEl = this.root.querySelector<HTMLSpanElement>('[data-level]');
     const coinsEl = this.root.querySelector<HTMLSpanElement>('[data-coins]');
@@ -84,23 +78,13 @@ export class MenuScreen {
     this.soundToggle.textContent = Audio.isEnabled ? t('menu.sound.on') : t('menu.sound.off');
   }
 
-  // Chamado quando o ads.config.json termina de carregar DEPOIS da tela já
-  // estar visível (a primeira exibição do menu, no boot, quase sempre
-  // corre com o fetch — ver main.ts) — só atualiza o anúncio, sem reiniciar
-  // nada mais da tela.
-  refreshAd(): void {
-    showAdSlot(this.footerAd, 'menu-footer');
-  }
-
   show(progression: ProgressionState): void {
     this.levelEl.textContent = t('menu.level', { level: progression.level });
     this.coinsEl.textContent = t('menu.coins', { coins: progression.coins });
     this.root.classList.add('screen--visible');
-    showAdSlot(this.footerAd, 'menu-footer');
   }
 
   hide(): void {
     this.root.classList.remove('screen--visible');
-    hideAdSlot('menu-footer');
   }
 }
