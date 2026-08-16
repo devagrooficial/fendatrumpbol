@@ -30,7 +30,7 @@ export class MenuScreen {
           Manche: <strong>W/S</strong> ou arraste o toque · Rolagem: <strong>A/D</strong> ·
           Leme: <strong>Q/E</strong> · Manete: <strong>Shift/Ctrl</strong> ou os botões +/−
         </p>
-        <p class="screen__hint">Voe pelos anéis, pouse na pista antes que o combustível acabe.</p>
+        <p class="screen__hint">Voe pelo anel <strong>laranja</strong> (o mais próximo) e pouse na pista antes que o combustível acabe.</p>
         <button type="button" class="screen__button" data-play>Decolar</button>
         <button type="button" class="screen__toggle" data-sound></button>
       </div>

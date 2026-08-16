@@ -55,10 +55,13 @@ export class HUD {
         <div class="hud__bar-track"><div class="hud__bar hud__bar--fuel" data-fuel-bar></div></div>
       </div>
       <div class="hud__checkpoint" data-checkpoint>
-        <span class="hud__icon hud__checkpoint-arrow" data-checkpoint-arrow>${ICON_ARROW}</span>
-        <span class="hud__icon">${ICON_CHECKPOINT}</span>
-        <span data-checkpoint-distance></span>
-        <span class="hud__checkpoint-vertical" data-checkpoint-vertical></span>
+        <span class="hud__checkpoint-label">Vá pro anel <strong>laranja</strong> — é o mais próximo</span>
+        <div class="hud__checkpoint-row">
+          <span class="hud__icon hud__checkpoint-arrow" data-checkpoint-arrow>${ICON_ARROW}</span>
+          <span class="hud__icon">${ICON_CHECKPOINT}</span>
+          <span data-checkpoint-distance></span>
+          <span class="hud__checkpoint-vertical" data-checkpoint-vertical></span>
+        </div>
       </div>
       <div class="hud__stall" data-stall-warning>ESTOL</div>
     `;
