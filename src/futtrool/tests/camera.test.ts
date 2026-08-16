@@ -11,11 +11,12 @@ describe('camera', () => {
     expect(screen.y).toBeCloseTo(450);
   });
 
-  it('usa "fit": campo inteiro sempre visível, escala = menor eixo', () => {
+  it('usa "fit": campo inteiro (+ faixa de apresentação) sempre visível, escala = menor eixo', () => {
     const camera = new Camera();
-    // Viewport mais largo que o campo (16:9 vs. 3:2) -> escala limitada pela altura.
+    // Viewport mais largo que o campo (16:9 vs. 3:2) -> escala limitada pela altura,
+    // que inclui FIELD.APRON_Y acima/abaixo pra caber as placas de perímetro.
     camera.resize(1600, 900);
-    const expectedScale = 900 / FIELD.HEIGHT;
+    const expectedScale = 900 / (FIELD.HEIGHT + FIELD.APRON_Y * 2);
     expect(camera.worldScale).toBeCloseTo(expectedScale);
   });
 

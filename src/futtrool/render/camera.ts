@@ -25,6 +25,10 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+function cameraWorldHeight(): number {
+  return FIELD.HEIGHT + FIELD.APRON_Y * 2;
+}
+
 export class Camera {
   centerX = FIELD.WIDTH / 2;
   centerY = FIELD.HEIGHT / 2;
@@ -46,8 +50,12 @@ export class Camera {
 
   private updateScale(): void {
     // "Fit": mostra o campo inteiro sempre, com faixas (letterbox) se a
-    // proporção da tela não bater com a do campo.
-    this.scale = Math.min(this.viewportW / FIELD.WIDTH, this.viewportH / FIELD.HEIGHT) * this.zoom;
+    // proporção da tela não bater com a do campo. A altura usada aqui
+    // inclui a faixa de apresentação acima/abaixo da linha de fundo
+    // (FIELD.APRON_Y) pra garantir que as placas de anúncio de perímetro
+    // sempre caibam no enquadramento padrão, não só quando a proporção da
+    // tela dá folga de sobra por acaso.
+    this.scale = Math.min(this.viewportW / FIELD.WIDTH, this.viewportH / cameraWorldHeight()) * this.zoom;
   }
 
   worldToScreen(x: number, y: number): ScreenPoint {
@@ -117,9 +125,10 @@ export class Camera {
         ? FIELD.WIDTH / 2
         : clamp(this.centerX, visibleWorldW / 2, FIELD.WIDTH - visibleWorldW / 2);
 
+    const worldH = cameraWorldHeight();
     this.centerY =
-      visibleWorldH >= FIELD.HEIGHT
+      visibleWorldH >= worldH
         ? FIELD.HEIGHT / 2
-        : clamp(this.centerY, visibleWorldH / 2, FIELD.HEIGHT - visibleWorldH / 2);
+        : clamp(this.centerY, -FIELD.APRON_Y + visibleWorldH / 2, FIELD.HEIGHT + FIELD.APRON_Y - visibleWorldH / 2);
   }
 }

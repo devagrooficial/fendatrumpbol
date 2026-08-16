@@ -9,6 +9,10 @@ export const FIELD = {
   GOAL_OPENING: 220, // altura da boca do gol, centralizada verticalmente
   GOAL_DEPTH: 50, // profundidade da área do gol (marcação visual + referência de regra)
   CENTER_CIRCLE_RADIUS: 130,
+  // Faixa fora do campo (acima/abaixo da linha de fundo) reservada pra
+  // câmera sempre enquadrar as placas de anúncio de perímetro — não é
+  // espaço jogável, só de apresentação (ver camera.ts e ads/slots.ts).
+  APRON_Y: 220,
 };
 
 export const PHYS = {

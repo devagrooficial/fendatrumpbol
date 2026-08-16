@@ -565,3 +565,43 @@ visíveis, as duas placas do lado esquerdo do campo ficam completamente
 visíveis e sem corte pela câmera, no canto certo. Nenhuma mudança de lógica
 em `adManager.ts` foi necessária — ele só consome os retângulos de
 `slots.ts`.
+
+## 13. Segunda correção: as placas têm que ficar FORA do campo, não dentro
+
+O Mateus corrigiu de novo, comparando com o print de referência: a entrada
+12 acima colocou as placas *dentro* do campo (nos cantos, junto às
+linhas), mas o print mostra as placas *fora* — na faixa fora da linha
+branca, atrás/ao lado de cada gol, como as placas de perímetro de um
+estádio de verdade.
+
+Duas mudanças, porque uma sem a outra não resolve:
+
+- `ads/slots.ts`: `FIELD_AD_RECTS` agora posiciona as 4 placas com `y`
+  negativo (acima da linha de fundo, fora do campo) pra `pitch-nw`/
+  `pitch-ne`, e `y` além de `FIELD.HEIGHT` (abaixo da linha de fundo, fora
+  do campo) pra `pitch-sw`/`pitch-se`, com `x` colado na lateral esquerda
+  ou direita — perto do gol correspondente, exatamente como as tentativas
+  originais antes da entrada 12 (o erro da entrada 12 foi "consertar" isso
+  pro lado errado).
+- `core/constants.ts` + `render/camera.ts`: só mudar a posição não
+  bastava — nada garantia que essa faixa fora do campo aparecesse no
+  enquadramento padrão da câmera (dependia de sorte da proporção da tela
+  sobrar espaço, o que causou o corte original que o Mateus reportou logo
+  no primeiro deploy). Criei `FIELD.APRON_Y` (220 unidades de mundo) como
+  faixa de apresentação reservada acima/abaixo do campo, e fiz o cálculo
+  de "fit" da câmera (`updateScale`) e o clamp (`clampCenter`) usarem
+  `FIELD.HEIGHT + FIELD.APRON_Y * 2` em vez de só `FIELD.HEIGHT` — assim a
+  câmera sempre deixa essa faixa (e as placas nela) visível, em vez de só
+  quando a tela por acaso é larga o bastante pra sobrar margem. Isso
+  encolhe um pouco o campo em tela (pra caber a faixa), efeito parecido
+  com o enquadramento de transmissão de futebol de verdade, que sempre
+  mostra um pedaço da lateral/placas.
+
+Ajustei o teste de `camera.test.ts` que fixava a escala esperada em
+`viewportH / FIELD.HEIGHT` — agora é `viewportH / (FIELD.HEIGHT +
+FIELD.APRON_Y * 2)`. Não criei um "apron" gramado visualmente (a faixa
+fora do campo continua com o fundo escuro padrão da UI, não grama) — as
+placas ficam sobre o fundo escuro, fora da linha branca, o que já resolve
+o pedido (posição certa + sem corte); dava pra desenhar uma faixa de
+grama mais clara ali também, mas isso não foi pedido e fica como possível
+polimento futuro.
