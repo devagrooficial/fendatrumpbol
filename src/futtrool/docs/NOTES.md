@@ -770,3 +770,56 @@ prorrogação.
 Cobertura de `core/` seguiu ~99.5% depois dessas mudanças (`vitest
 --coverage`), sem nenhum caminho de física/regra novo sem teste. 157
 testes no total (5 novos deste marco).
+
+## 18. Revisão de jogabilidade mobile: DASH colidindo com a placa de anúncio
+
+O Mateus pediu pra testar os controles no mobile e ajustar o que
+precisasse. Testado em 3 tamanhos de tela deitada (568×320, 667×375,
+736×414 — celular pequeno, médio e grande) via toque sintético de
+verdade (`PointerEvent` com `pointerType: 'touch'`, multi-toque incluído)
+direto no canvas, já que o clique da ferramenta de automação trava nesse
+modo de emulação touch do navegador de teste (bug do ambiente de
+automação, não do jogo — confirmado disparando `.click()` via JS, que
+funciona instantâneo).
+
+**Bug real encontrado e corrigido:** nas telas mais baixas (ex.:
+568×320), o botão DASH — que ficava empilhado *acima* do PONTAPÉ — subia
+alto o suficiente pra colidir visualmente com a placa de anúncio de campo
+do canto superior direito (`pitch-ne`, ver seção 13/14 acima sobre a
+faixa lateral de anúncios). Como o deslocamento vertical do DASH era
+fixo em pixels de tela mas a altura da viewport varia, em telas baixas
+esse deslocamento passava a ocupar uma fração grande demais da tela,
+empurrando o botão pra cima demais.
+
+Corrigido em `input/joystick.ts` (`computeTouchLayout`): os 3 botões
+(turbo, dash, chute) agora ficam numa única fileira horizontal colada na
+borda inferior direita, todos na mesma altura, em vez de dash empilhado
+acima do chute. Isso prende o conjunto sempre perto do fundo da tela,
+não importa o formato da viewport — testado nos 3 tamanhos acima, sem
+sobreposição com a placa em nenhum deles.
+
+**Verificado, sem problema:** a lógica de seleção de anúncios
+(`adManager.ts`, `getActiveFieldSlots`) sempre prioriza `pitch-nw`/
+`pitch-ne` (a ordem em `FIELD_SLOT_ORDER` + o limite de 2 visíveis
+simultâneos faz as placas de baixo, `pitch-sw`/`pitch-se`, nunca serem
+escolhidas enquanto as de cima estiverem visíveis) — confirma por que
+isso nunca apareceu em nenhuma captura de tela desta sessão inteira.
+Então o risco de as placas de baixo colidirem com a nova fileira de
+botões (que ficou mais perto do fundo do campo) é baixo na prática,
+mas não é garantido por código — fica registrado aqui como algo a
+observar se algum dia a lógica de seleção de anúncio mudar.
+
+**Confirmado funcionando (sem mudança de código, só validação):**
+- Multi-toque de verdade: segurar TURBO com um dedo enquanto arrasta o
+  joystick com outro drena o combustível corretamente (testado: 1.0 →
+  0.71-0.78 em ~300-400ms de boost, batendo com `BOOST_DRAIN_S`).
+- Toque em DASH dispara o cooldown (`dashCooldown` pulou pra ~2.4,
+  perto do `DASH_COOLDOWN` de 2.5).
+- Segurar PONTAPÉ carrega o chute (`kickCharge` > 0 enquanto segurado) e
+  soltar dispara o chute (`kickCharge` volta a 0).
+- Hit-test dos 3 botões bate com a posição calculada pela nova
+  `computeTouchLayout` em todos os 3 tamanhos de tela testados.
+
+`npx tsc --noEmit` limpo, 157/157 testes passando (nenhum teste
+automatizado cobre `joystick.ts` diretamente — é código de DOM/Pointer
+Events, testado manualmente como o resto do input).

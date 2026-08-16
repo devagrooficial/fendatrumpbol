@@ -18,17 +18,25 @@ export type TouchLayout = {
   boostButton: { x: number; y: number; radius: number };
 };
 
-// Botão de chute no canto inferior direito, dash um pouco acima, turbo à
-// esquerda do chute (mesma altura) — layout recalculado a cada resize a
-// partir do tamanho real da viewport.
+// Os 3 botões (turbo, dash, chute) ficam numa única fileira colada na
+// borda inferior direita, todos na mesma altura — de propósito, não
+// empilhados verticalmente. Um dash "um pouco acima" do chute cresce em
+// altura de tela conforme a viewport fica mais baixa/larga (celular
+// deitado), e nas telas mais baixas isso colide com as placas de anúncio
+// de campo (que ficam perto do topo — ver ads/slots.ts e o
+// FIELD.APRON_X da câmera). Uma fileira horizontal mantém o conjunto
+// sempre perto da borda inferior, não importa o formato da tela.
 export function computeTouchLayout(viewportW: number, viewportH: number): TouchLayout {
   const margin = 28;
+  const gap = 14;
   const kickX = viewportW - margin - KICK_BUTTON_RADIUS_PX;
   const kickY = viewportH - margin - KICK_BUTTON_RADIUS_PX;
+  const dashX = kickX - KICK_BUTTON_RADIUS_PX - DASH_BUTTON_RADIUS_PX - gap;
+  const boostX = dashX - DASH_BUTTON_RADIUS_PX - BOOST_BUTTON_RADIUS_PX - gap;
   return {
     kickButton: { x: kickX, y: kickY, radius: KICK_BUTTON_RADIUS_PX },
-    dashButton: { x: kickX - 10, y: kickY - KICK_BUTTON_RADIUS_PX - DASH_BUTTON_RADIUS_PX - 18, radius: DASH_BUTTON_RADIUS_PX },
-    boostButton: { x: kickX - KICK_BUTTON_RADIUS_PX - BOOST_BUTTON_RADIUS_PX - 22, y: kickY, radius: BOOST_BUTTON_RADIUS_PX },
+    dashButton: { x: dashX, y: kickY, radius: DASH_BUTTON_RADIUS_PX },
+    boostButton: { x: boostX, y: kickY, radius: BOOST_BUTTON_RADIUS_PX },
   };
 }
 
