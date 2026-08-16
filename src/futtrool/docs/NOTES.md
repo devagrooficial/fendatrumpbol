@@ -605,3 +605,34 @@ placas ficam sobre o fundo escuro, fora da linha branca, o que já resolve
 o pedido (posição certa + sem corte); dava pra desenhar uma faixa de
 grama mais clara ali também, mas isso não foi pedido e fica como possível
 polimento futuro.
+
+## 14. Terceira correção: lateral (eixo X), não em cima/embaixo (eixo Y)
+
+O Mateus mandou um mockup mostrando as 4 placas na lateral esquerda/
+direita da tela (2 empilhadas de cada lado, fora do retângulo do jogo) e
+explicou o motivo: a entrada 13 tinha resolvido "fora do campo", mas
+usando a faixa de cima/baixo (`FIELD.APRON_Y`), o que encolhia a altura
+visível do campo em tela — e ele não quer perder espaço vertical.
+
+Troquei o eixo da faixa de apresentação de Y pra X:
+
+- `core/constants.ts`: `FIELD.APRON_Y` virou `FIELD.APRON_X` (380
+  unidades, além de cada linha de fundo).
+- `render/camera.ts`: o "fit" (`updateScale`) agora reserva essa faixa na
+  **largura** (`FIELD.WIDTH + FIELD.APRON_X * 2`) e usa `FIELD.HEIGHT`
+  puro na altura — antes era o contrário. `clampCenter` espelhou a
+  mudança: o clamp expandido agora é no eixo X, o eixo Y voltou a ficar
+  restrito a `[0, FIELD.HEIGHT]` como era antes de toda essa história de
+  placa.
+- `ads/slots.ts`: `FIELD_AD_RECTS` agora posiciona os 4 retângulos fora
+  das linhas de fundo esquerda/direita (`x` negativo ou além de
+  `FIELD.WIDTH`), empilhados em Y — um par acima da boca do gol (y ~40 a
+  220) e um par abaixo (y ~580 a 760) — sem sobrepor a abertura do gol
+  (`FIELD.GOAL_OPENING`, y 290–510), pra não cobrir a rede.
+
+Testado ao vivo: com o `adManager` limitando a 2 placas simultâneas, dá
+pra ver as duas placas do lado esquerdo (perto do gol esquerdo) e,
+movendo a ação pro outro lado, as duas do lado direito — ambas totalmente
+visíveis, sem corte pela câmera, e a altura do campo em tela não encolheu
+mais (volta a usar a tela inteira na vertical). Ajustei
+`camera.test.ts` de novo pra refletir o eixo trocado.

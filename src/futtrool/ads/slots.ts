@@ -26,31 +26,32 @@ export const AD_SLOT_IDS: AdSlotId[] = [
 export type WorldRect = { x: number; y: number; w: number; h: number };
 
 // Placas de perímetro (spec: "placa deitada no gramado, atrás da área") —
-// posicionadas FORA do campo, acima/abaixo da linha de fundo, coladas no
-// canto de cada gol (2 perto do gol esquerdo, 2 perto do direito), igual
-// às capturas de tela de referência (ver docs/NOTES.md, seção 3) — como
-// as placas de perímetro de um estádio de verdade, que ficam do lado de
-// fora da linha branca. Uma primeira tentativa colocou isso pra dentro do
-// campo; o Mateus corrigiu de novo depois de comparar com o print: tem
-// que ser fora. Pra isso não cortar no enquadramento padrão, a câmera
-// (camera.ts) agora reserva FIELD.APRON_Y de altura extra acima/abaixo do
-// campo só pra isso — as placas ficam dentro dessa faixa, com folga até a
-// borda dela.
+// posicionadas FORA do campo, além de cada linha de fundo (do lado de
+// cada gol), empilhadas na vertical (2 perto do gol esquerdo, 2 perto do
+// direito), igual ao mockup que o Mateus mandou — de propósito na
+// lateral (eixo X), não em cima/embaixo, pra não consumir espaço vertical
+// do campo. Uma tentativa anterior colocou isso acima/abaixo da linha de
+// fundo (eixo Y), o que encolhia o campo na tela; o Mateus pediu de volta
+// pro estilo lateral. Pra isso não cortar no enquadramento padrão, a
+// câmera (camera.ts) reserva FIELD.APRON_X de largura extra além de cada
+// linha de fundo só pra isso — as placas ficam dentro dessa faixa, com
+// folga até a borda dela, e o Y de cada par fica fora da faixa da boca do
+// gol (FIELD.GOAL_OPENING) pra não sobrepor a rede.
 const PITCH_BOARD_W = 320;
 const PITCH_BOARD_H = 180;
-const PITCH_BOARD_MARGIN_X = 40; // afastamento da lateral esquerda/direita do campo
-const PITCH_BOARD_MARGIN_INNER_Y = 20; // afastamento da linha de fundo (dentro da faixa fora do campo)
+const PITCH_BOARD_MARGIN_OUTER_X = 20; // afastamento da linha de fundo (fora do campo)
+const PITCH_BOARD_MARGIN_Y = 40; // afastamento da lateral de cima/baixo do campo
 
-const topY = -PITCH_BOARD_MARGIN_INNER_Y - PITCH_BOARD_H;
-const bottomY = FIELD.HEIGHT + PITCH_BOARD_MARGIN_INNER_Y;
-const leftX = PITCH_BOARD_MARGIN_X;
-const rightX = FIELD.WIDTH - PITCH_BOARD_MARGIN_X - PITCH_BOARD_W;
+const leftX = -PITCH_BOARD_MARGIN_OUTER_X - PITCH_BOARD_W;
+const rightX = FIELD.WIDTH + PITCH_BOARD_MARGIN_OUTER_X;
+const upperY = PITCH_BOARD_MARGIN_Y;
+const lowerY = FIELD.HEIGHT - PITCH_BOARD_MARGIN_Y - PITCH_BOARD_H;
 
 export const FIELD_AD_RECTS: Record<'pitch-nw' | 'pitch-ne' | 'pitch-sw' | 'pitch-se', WorldRect> = {
-  'pitch-nw': { x: leftX, y: topY, w: PITCH_BOARD_W, h: PITCH_BOARD_H },
-  'pitch-sw': { x: leftX, y: bottomY, w: PITCH_BOARD_W, h: PITCH_BOARD_H },
-  'pitch-ne': { x: rightX, y: topY, w: PITCH_BOARD_W, h: PITCH_BOARD_H },
-  'pitch-se': { x: rightX, y: bottomY, w: PITCH_BOARD_W, h: PITCH_BOARD_H },
+  'pitch-nw': { x: leftX, y: upperY, w: PITCH_BOARD_W, h: PITCH_BOARD_H },
+  'pitch-sw': { x: leftX, y: lowerY, w: PITCH_BOARD_W, h: PITCH_BOARD_H },
+  'pitch-ne': { x: rightX, y: upperY, w: PITCH_BOARD_W, h: PITCH_BOARD_H },
+  'pitch-se': { x: rightX, y: lowerY, w: PITCH_BOARD_W, h: PITCH_BOARD_H },
 };
 
 export const CENTER_WATERMARK_RECT: WorldRect = {
