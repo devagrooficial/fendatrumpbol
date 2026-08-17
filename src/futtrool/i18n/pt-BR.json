@@ -8,6 +8,9 @@
   "menu.comingSoon": "Em breve",
   "menu.sound.on": "Som: ligado",
   "menu.sound.off": "Som: desligado",
+  "menu.fullscreen.on": "Tela cheia: ativada",
+  "menu.fullscreen.off": "Tela cheia",
+  "menu.fullscreen.unsupported": "Nesse navegador, adicione à Tela de Início (Compartilhar → Adicionar à Tela de Início) pra jogar em tela cheia de verdade",
   "menu.level": "Nível {level}",
   "menu.coins": "$ {coins}",
 

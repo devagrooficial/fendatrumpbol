@@ -427,7 +427,7 @@ function render(_alpha: number): void {
 
   renderParticles(ctx, camera, fx.getParticles());
   renderGoalFlash(ctx, window.innerWidth, window.innerHeight, fx.getFlashAlpha());
-  renderMatchHud(ctx, window.innerWidth, window.innerHeight, state, `IA: ${aiState.fsmState}`);
+  renderMatchHud(ctx, window.innerWidth, window.innerHeight, state, `IA: ${aiState.fsmState}`, camera);
 
   if (touch && appScreen === 'match' && !inGoalReplayWindow) {
     renderTouchControls(ctx, touch.getLayout(), touch.joystickVisual, state.players.p1.kickCharge, state.players.p1.boostStamina);

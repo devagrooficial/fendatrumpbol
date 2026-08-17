@@ -1,12 +1,15 @@
 import { t } from '../../i18n';
 import { Audio } from '../../audio/Audio';
 import type { ProgressionState } from '../../progression/storage';
+import { isFullscreenActive, isFullscreenSupported, toggleFullscreen } from '../../fullscreen';
 
 export class MenuScreen {
   private readonly root: HTMLDivElement;
   private readonly levelEl: HTMLSpanElement;
   private readonly coinsEl: HTMLSpanElement;
   private readonly soundToggle: HTMLButtonElement;
+  private readonly fullscreenToggle: HTMLButtonElement;
+  private readonly placeholderNote: HTMLParagraphElement;
 
   constructor(onPlay: () => void, onReplays: () => void) {
     this.root = document.createElement('div');
@@ -26,7 +29,10 @@ export class MenuScreen {
         </div>
         <button type="button" class="screen__button screen__button--secondary" data-replays>${t('menu.replays')}</button>
         <p class="screen__placeholder-note" data-placeholder-note></p>
-        <button type="button" class="screen__toggle" data-sound></button>
+        <div class="screen__button-row">
+          <button type="button" class="screen__toggle" data-sound></button>
+          <button type="button" class="screen__toggle" data-fullscreen></button>
+        </div>
       </div>
     `;
 
@@ -38,12 +44,25 @@ export class MenuScreen {
     const replaysButton = this.root.querySelector<HTMLButtonElement>('[data-replays]');
     const placeholderNote = this.root.querySelector<HTMLParagraphElement>('[data-placeholder-note]');
     const soundToggle = this.root.querySelector<HTMLButtonElement>('[data-sound]');
-    if (!levelEl || !coinsEl || !playButton || !inventoryButton || !shopButton || !replaysButton || !placeholderNote || !soundToggle) {
+    const fullscreenToggle = this.root.querySelector<HTMLButtonElement>('[data-fullscreen]');
+    if (
+      !levelEl ||
+      !coinsEl ||
+      !playButton ||
+      !inventoryButton ||
+      !shopButton ||
+      !replaysButton ||
+      !placeholderNote ||
+      !soundToggle ||
+      !fullscreenToggle
+    ) {
       throw new Error('Markup do MenuScreen incompleto');
     }
     this.levelEl = levelEl;
     this.coinsEl = coinsEl;
     this.soundToggle = soundToggle;
+    this.fullscreenToggle = fullscreenToggle;
+    this.placeholderNote = placeholderNote;
 
     playButton.addEventListener('click', () => {
       Audio.click();
@@ -71,12 +90,32 @@ export class MenuScreen {
     });
     this.syncSoundToggle();
 
+    // Tela cheia (pedido depois de testar no celular — a barra de endereço
+    // do navegador ficava sempre visível). Só funciona de verdade em
+    // Android Chrome/desktop (Fullscreen API); no Safari do iPhone não tem
+    // API pra isso, então mostra a alternativa que funciona lá (adicionar
+    // à tela de início) em vez de um botão que não faz nada em silêncio.
+    fullscreenToggle.addEventListener('click', () => {
+      Audio.click();
+      if (!isFullscreenSupported()) {
+        this.placeholderNote.textContent = t('menu.fullscreen.unsupported');
+        return;
+      }
+      void toggleFullscreen();
+    });
+    document.addEventListener('fullscreenchange', this.syncFullscreenToggle);
+    this.syncFullscreenToggle();
+
     document.body.appendChild(this.root);
   }
 
   private syncSoundToggle(): void {
     this.soundToggle.textContent = Audio.isEnabled ? t('menu.sound.on') : t('menu.sound.off');
   }
+
+  private readonly syncFullscreenToggle = (): void => {
+    this.fullscreenToggle.textContent = isFullscreenActive() ? t('menu.fullscreen.on') : t('menu.fullscreen.off');
+  };
 
   show(progression: ProgressionState): void {
     this.levelEl.textContent = t('menu.level', { level: progression.level });

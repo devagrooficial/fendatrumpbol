@@ -46,6 +46,11 @@ export class KeyboardInput {
   constructor() {
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
+    // Mesma rede de segurança do TouchInput: se a janela perder o foco com
+    // uma tecla pressionada (troca de app/aba, sem o `keyup` nunca chegar),
+    // a tecla ficaria "presa" pra sempre. Zera tudo quando isso acontece.
+    window.addEventListener('blur', this.resetInput);
+    document.addEventListener('visibilitychange', this.onVisibilityChange);
   }
 
   private readonly onKeyDown = (e: KeyboardEvent): void => {
@@ -59,6 +64,15 @@ export class KeyboardInput {
 
   private readonly onKeyUp = (e: KeyboardEvent): void => {
     this.pressed.delete(e.code);
+  };
+
+  private readonly resetInput = (): void => {
+    this.pressed.clear();
+    this.dashPending.clear();
+  };
+
+  private readonly onVisibilityChange = (): void => {
+    if (document.hidden) this.resetInput();
   };
 
   getCommand(id: PlayerId, tick: number): Command {
@@ -88,5 +102,7 @@ export class KeyboardInput {
   dispose(): void {
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
+    window.removeEventListener('blur', this.resetInput);
+    document.removeEventListener('visibilitychange', this.onVisibilityChange);
   }
 }

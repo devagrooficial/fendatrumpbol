@@ -70,7 +70,33 @@ export class TouchInput {
     canvas.addEventListener('pointermove', this.onPointerMove);
     canvas.addEventListener('pointerup', this.onPointerUp);
     canvas.addEventListener('pointercancel', this.onPointerUp);
+
+    // Rede de segurança: se o navegador engolir o `pointerup`/`pointercancel`
+    // de verdade (visto em celular — o sistema intercepta o toque no meio
+    // de um gesto, ex.: swipe de voltar/Central de Controle no iOS, troca de
+    // app, notificação puxando o foco) o dedo levantado nunca chega a soltar
+    // o estado aqui, e o jogo fica "andando sozinho" pra um lado pra sempre
+    // (foi isso que o Mateus reportou como controle travado). `blur` e
+    // `visibilitychange` (aba/app escondido) são o sinal mais confiável de
+    // que qualquer toque em andamento não é mais confiável — zera tudo.
+    window.addEventListener('blur', this.resetInput);
+    document.addEventListener('visibilitychange', this.onVisibilityChange);
   }
+
+  private readonly resetInput = (): void => {
+    this.moveTouch = null;
+    this.moveVector = { x: 0, y: 0 };
+    this.joystickVisual = null;
+    this.kickPointerId = null;
+    this.kickHeld = false;
+    this.dashPending = false;
+    this.boostPointerId = null;
+    this.boostHeld = false;
+  };
+
+  private readonly onVisibilityChange = (): void => {
+    if (document.hidden) this.resetInput();
+  };
 
   updateLayout(viewportW: number, viewportH: number): void {
     this.layout = computeTouchLayout(viewportW, viewportH);
@@ -185,5 +211,7 @@ export class TouchInput {
     this.canvas.removeEventListener('pointermove', this.onPointerMove);
     this.canvas.removeEventListener('pointerup', this.onPointerUp);
     this.canvas.removeEventListener('pointercancel', this.onPointerUp);
+    window.removeEventListener('blur', this.resetInput);
+    document.removeEventListener('visibilitychange', this.onVisibilityChange);
   }
 }

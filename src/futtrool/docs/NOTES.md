@@ -953,3 +953,65 @@ inteira, então automaticamente passou a girar o padrão novo também.
 
 Confirmado ao vivo: o padrão preenche visivelmente a bola toda em vez de
 ficar concentrado num canto.
+
+## 23. Três problemas de jogabilidade mobile (teste real do Mateus no iPhone)
+
+O Mateus testou no navegador de verdade (Safari, iPhone, pelo print:
+`fendatrumpbol.vercel.app`) e reportou 3 problemas.
+
+**1. "Apresentado por FutTrool" travado sobre o campo.** Não era um
+travamento de verdade — o `scoreboard-sponsor` (`ui/hud.ts`) sempre foi
+desenhado numa posição fixa em pixels de tela (`y: 106`), pensada pra
+sobrar margem acima da linha de fundo do campo, igual acontece em
+desktop. Só que em celular deitado (tela curta e larga) a câmera
+(`FIELD.APRON_X`, seção 14) às vezes deixa quase zero margem entre o topo
+da viewport e a linha de fundo — nesse caso a faixa fixa cai POR CIMA do
+gramado, sobrepondo a jogada o tempo todo (por isso parecia "travada":
+não é que não sumia, é que sempre esteve ali, só que agora visível
+atrapalhando). Corrigido: `renderMatchHud` (`ui/hud.ts`) ganhou o
+parâmetro `camera` e só desenha o `scoreboard-sponsor` se
+`camera.worldToScreen(FIELD.WIDTH/2, 0).y` (a posição em tela da linha de
+fundo) deixar margem de verdade acima da faixa — senão, some. Confirmado
+ao vivo: aparece normal em desktop, some em viewport curto (812×375) sem
+sobrepor o campo.
+
+**2. Controle "travando" pra um lado só, acabando com a partida.** Causa
+mais provável: em celular, o sistema às vezes intercepta um toque no meio
+do gesto (troca de app, gesto de voltar/Central de Controle do iOS,
+notificação puxando o foco) e o `pointerup`/`pointercancel` nunca chega a
+disparar na página — o joystick fica achando que o dedo ainda está
+segurado, empurrando o jogador pra sempre naquela direção (o jogo
+continua rodando normalmente, só o input é que fica preso — não é
+travamento de verdade, apesar de parecer). Corrigido em
+`input/joystick.ts` e `input/keyboard.ts`: os dois ganharam listeners de
+`blur` (janela/app perde o foco) e `visibilitychange`
+(aba/app escondido) que zeram TODO o estado de input (joystick, chute,
+dash, turbo, teclas seguradas) como rede de segurança. Verificado ao
+vivo: simulei um toque "preso" no joystick (pointerdown + pointermove,
+sem pointerup nunca) e disparei `blur` — a velocidade do jogador decaiu
+exatamente pela taxa de arrasto físico (`PLAYER_DRAG`), confirmando que
+parou de receber empurrão nenhum depois do reset.
+
+**3. Botão de tela cheia.** Novo `fullscreen.ts` (`toggleFullscreen`,
+`isFullscreenSupported`, `isFullscreenActive`) usando a Fullscreen API
+padrão, com botão novo no menu (`MenuScreen.ts`, ao lado do de som).
+Limitação real de plataforma, documentada no código e pro usuário: o
+Safari do iPhone (que é onde o Mateus testou, pelo print) não expõe
+`requestFullscreen` pra elementos genéricos, só pra `<video>` — não tem
+jeito de contornar isso via JS, e um botão que finge funcionar ali seria
+pior que não ter nada. Por isso, se `isFullscreenSupported()` for falso,
+o botão mostra uma dica de verdade em vez de falhar em silêncio: "adicione
+à Tela de Início" (que aí sim abre em tela cheia real no iOS, via
+`apple-mobile-web-app-capable` do Safari — não configurei isso agora,
+ficaria como próximo passo se o Mateus quiser ir mais fundo nisso, exige
+manifest.json + ícones em vários tamanhos, mais escopo do que só "um
+botão"). Em Android Chrome/desktop, onde a API existe de verdade, o botão
+funciona igual qualquer outro site. Testado ao vivo (o toggle funciona
+sem erro; o resultado visual da API em si não dá pra confirmar dentro do
+navegador de teste em sandbox, que bloqueia fullscreen de verdade por
+segurança — confirmei o fallback pro caso sem suporte simulando
+`requestFullscreen` ausente).
+
+`npx tsc --noEmit` limpo, 157/157 testes passando (nenhum teste
+automatizado cobre esses três arquivos — DOM/canvas/Fullscreen API, testado
+manualmente).
