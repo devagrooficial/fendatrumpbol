@@ -5,6 +5,7 @@ import { Ranking, type RankingEntry } from '../core/Ranking';
 import { GAME_NAME } from '../config';
 import { CHARACTER_ORDER, CHARACTER_PRESETS, type CharacterId } from '../entities/characters';
 import { ICON_COIN, ICON_GEM, ICON_TROPHY } from './icons';
+import { supabase } from '../auth/supabaseClient';
 
 function toCssHex(color: number): string {
   return `#${color.toString(16).padStart(6, '0')}`;
@@ -25,12 +26,15 @@ export class GameOverScreen {
   private readonly gemsEl: HTMLSpanElement;
   private readonly recordEl: HTMLParagraphElement;
   private readonly rankingBlock: HTMLDivElement;
-  private readonly nameInput: HTMLInputElement;
+  private readonly nameEl: HTMLParagraphElement;
   private readonly submitButton: HTMLButtonElement;
   private readonly submitStatus: HTMLParagraphElement;
   private readonly game: Game;
   private lastState: GameState | null = null;
   private submitted = false;
+  // Nome de quem está logado (vem da conta, não mais digitado à mão) —
+  // null enquanto ainda não checou a sessão, ou se ninguém está logado.
+  private userName: string | null = null;
 
   constructor(game: Game, onRestart: () => void) {
     this.game = game;
@@ -45,7 +49,7 @@ export class GameOverScreen {
         <p class="screen__stat screen__stat--icon"><span class="hud__icon">${ICON_COIN}</span><span data-coins></span></p>
         <p class="screen__stat screen__stat--icon"><span class="hud__icon">${ICON_GEM}</span><span data-gems></span></p>
         <div class="ranking-submit" data-ranking-block>
-          <input type="text" class="screen__input" data-name-input placeholder="Seu nome" maxlength="20" />
+          <p class="ranking-submit__name" data-ranking-name></p>
           <button type="button" class="screen__button screen__button--secondary" data-submit-score>Enviar pro ranking</button>
           <p class="ranking-submit__status" data-submit-status></p>
         </div>
@@ -59,12 +63,12 @@ export class GameOverScreen {
     const recordEl = this.root.querySelector<HTMLParagraphElement>('[data-record]');
     const restartButton = this.root.querySelector<HTMLButtonElement>('[data-restart]');
     const rankingBlock = this.root.querySelector<HTMLDivElement>('[data-ranking-block]');
-    const nameInput = this.root.querySelector<HTMLInputElement>('[data-name-input]');
+    const nameEl = this.root.querySelector<HTMLParagraphElement>('[data-ranking-name]');
     const submitButton = this.root.querySelector<HTMLButtonElement>('[data-submit-score]');
     const submitStatus = this.root.querySelector<HTMLParagraphElement>('[data-submit-status]');
     if (
       !scoreEl || !coinsEl || !gemsEl || !recordEl || !restartButton ||
-      !rankingBlock || !nameInput || !submitButton || !submitStatus
+      !rankingBlock || !nameEl || !submitButton || !submitStatus
     ) {
       throw new Error('Markup do GameOverScreen incompleto');
     }
@@ -73,7 +77,7 @@ export class GameOverScreen {
     this.gemsEl = gemsEl;
     this.recordEl = recordEl;
     this.rankingBlock = rankingBlock;
-    this.nameInput = nameInput;
+    this.nameEl = nameEl;
     this.submitButton = submitButton;
     this.submitStatus = submitStatus;
 
@@ -88,17 +92,41 @@ export class GameOverScreen {
     document.body.appendChild(this.root);
   }
 
+  // Lê quem está logado (sessão já em cache local do SDK — sem round-trip
+  // de rede) pra usar como nome no ranking, em vez do campo de texto que
+  // existia antes. Chamado uma vez sempre que a tela de fim de jogo abre.
+  private async refreshUser(): Promise<void> {
+    if (!supabase) {
+      this.userName = null;
+      this.updateRankingUi();
+      return;
+    }
+
+    const { data } = await supabase.auth.getSession();
+    const nome = data.session?.user.user_metadata?.nome;
+    this.userName = typeof nome === 'string' && nome.trim() ? nome.trim() : null;
+    this.updateRankingUi();
+  }
+
+  private updateRankingUi(): void {
+    if (this.userName) {
+      this.nameEl.textContent = `Enviando como: ${this.userName}`;
+      this.submitButton.disabled = this.submitted;
+    } else {
+      this.nameEl.textContent = 'Faça login pra entrar no ranking.';
+      this.submitButton.disabled = true;
+    }
+  }
+
   private async submitScore(): Promise<void> {
-    const name = this.nameInput.value.trim();
-    if (!name || this.submitted) return;
+    if (!this.userName || this.submitted) return;
 
     Audio.click();
     this.submitButton.disabled = true;
-    this.nameInput.disabled = true;
     this.submitStatus.textContent = 'Enviando...';
 
     const ok = await Ranking.submitScore({
-      name,
+      name: this.userName,
       score: this.game.score,
       distance: this.game.distanceTravelled,
       coins: this.game.coinsCollected,
@@ -108,11 +136,9 @@ export class GameOverScreen {
 
     if (ok) {
       this.submitted = true;
-      Storage.setPlayerName(name);
       this.submitStatus.textContent = 'Enviado! Você está no ranking.';
     } else {
       this.submitButton.disabled = false;
-      this.nameInput.disabled = false;
       this.submitStatus.textContent = 'Falha ao enviar — tenta de novo.';
     }
   }
@@ -133,10 +159,10 @@ export class GameOverScreen {
 
     this.rankingBlock.classList.toggle('ranking-submit--hidden', !Ranking.isConfigured());
     this.submitted = false;
-    this.submitButton.disabled = false;
-    this.nameInput.disabled = false;
-    this.nameInput.value = Storage.getPlayerName();
     this.submitStatus.textContent = '';
+    this.nameEl.textContent = 'Verificando login...';
+    this.submitButton.disabled = true;
+    void this.refreshUser();
   }
 }
 

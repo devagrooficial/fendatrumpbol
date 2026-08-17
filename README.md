@@ -41,7 +41,7 @@ acumulador de delta fixo do loop (`src/shared/Loop.ts`), que não conhece o
 config de nenhum deles.
 
 ```
-index.html                  hub — "Escolha seu Jogo"
+index.html                  hub — "Jogos do Mateus Almeida"
 trumpbol.html                entrada do runner
 flysim.html                  entrada do fly simulator
 futtrool.html                 entrada do FutTrool

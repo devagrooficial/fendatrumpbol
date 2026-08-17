@@ -329,25 +329,6 @@ button {
   transition: width 100ms linear;
 }
 
-.screen__input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 0.55rem 0.8rem;
-  font-size: 16px; /* abaixo disso o Safari iOS dá zoom automático ao focar */
-  color: #fdf6ff;
-  background: rgba(253, 246, 255, 0.08);
-  border: 1px solid rgba(253, 246, 255, 0.3);
-  border-radius: 0.6rem;
-  touch-action: manipulation;
-  -webkit-user-select: text;
-  user-select: text;
-}
-
-.screen__input:focus {
-  outline: none;
-  border-color: #2f6bff;
-}
-
 .ranking-submit {
   display: flex;
   flex-direction: column;
@@ -358,6 +339,12 @@ button {
 
 .ranking-submit--hidden {
   display: none;
+}
+
+.ranking-submit__name {
+  margin: 0;
+  font-size: 0.85rem;
+  color: rgba(253, 246, 255, 0.75);
 }
 
 .ranking-submit__status {

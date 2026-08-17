@@ -70,20 +70,4 @@ export const Storage = {
       // localStorage indisponível — falha silenciosa
     }
   },
-
-  getPlayerName(): string {
-    try {
-      return localStorage.getItem(STORAGE_KEYS.PLAYER_NAME) ?? '';
-    } catch {
-      return '';
-    }
-  },
-
-  setPlayerName(name: string): void {
-    try {
-      localStorage.setItem(STORAGE_KEYS.PLAYER_NAME, name);
-    } catch {
-      // localStorage indisponível — falha silenciosa
-    }
-  },
 };

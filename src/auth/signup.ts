@@ -10,7 +10,7 @@ root.innerHTML = `
   <div class="auth">
     <form class="auth__card" data-form>
       <h1 class="auth__title">Criar conta</h1>
-      <p class="auth__subtitle">Escolha seu Jogo</p>
+      <p class="auth__subtitle">Jogos do Mateus Almeida</p>
       <div class="auth__field">
         <label for="nome">Nome</label>
         <input id="nome" name="nome" type="text" autocomplete="name" required />

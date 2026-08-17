@@ -100,7 +100,6 @@ export const STORAGE_KEYS = {
   TOTAL_GEMS: 'fendaneon.totalGems',
   SOUND_ENABLED: 'fendaneon.soundEnabled',
   CHARACTER: 'fendaneon.character',
-  PLAYER_NAME: 'fendaneon.playerName',
 };
 
 export const RANKING = {

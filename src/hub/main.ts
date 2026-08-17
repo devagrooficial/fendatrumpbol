@@ -35,7 +35,7 @@ async function init(): Promise<void> {
 
   root.innerHTML = `
     <button type="button" class="hub__logout" data-logout>Sair</button>
-    <h1 class="hub__title">Escolha seu Jogo</h1>
+    <h1 class="hub__title">Jogos do Mateus Almeida</h1>
     <p class="hub__greeting" data-greeting></p>
     <div class="hub__grid">
       <a class="game-card game-card--trumpbol" href="/trumpbol.html">

@@ -9,7 +9,7 @@ root.innerHTML = `
   <div class="auth">
     <form class="auth__card" data-form>
       <h1 class="auth__title">Entrar</h1>
-      <p class="auth__subtitle">Escolha seu Jogo</p>
+      <p class="auth__subtitle">Jogos do Mateus Almeida</p>
       <div class="auth__field">
         <label for="email">E-mail</label>
         <input id="email" name="email" type="email" autocomplete="email" required />
