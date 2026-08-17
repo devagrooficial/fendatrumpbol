@@ -1,6 +1,7 @@
 import { t } from '../i18n';
 import { Audio } from '../audio/Audio';
 import { createAdSlotImg, hideAdSlot, showAdSlot } from './adSlot';
+import { supabase } from '../../auth/supabaseClient';
 
 // Overlay do replay automático de gol (spec seção 8). Diferente das telas
 // de menu/fim de jogo, isso fica por CIMA do jogo rodando (o canvas
@@ -15,7 +16,7 @@ export class ReplayOverlay {
   private readonly skipButton: HTMLButtonElement;
   private readonly lowerThirdAd: HTMLImageElement;
 
-  constructor(onReact: () => void, onSave: () => void, onSkip: () => void) {
+  constructor(onReact: () => void, onSave: () => Promise<boolean>, onSkip: () => void) {
     this.root = document.createElement('div');
     this.root.className = 'replay-overlay';
     this.root.innerHTML = `
@@ -50,8 +51,7 @@ export class ReplayOverlay {
     });
     this.saveButton.addEventListener('click', () => {
       Audio.click();
-      onSave();
-      this.markSaved();
+      void this.handleSave(onSave);
     });
     this.skipButton.addEventListener('click', () => {
       Audio.click();
@@ -77,6 +77,38 @@ export class ReplayOverlay {
     this.reactButton.textContent = t('replay.react');
     this.root.classList.add('replay-overlay--visible');
     showAdSlot(this.lowerThirdAd, 'replay-lower-third');
+
+    // Salvar replay agora precisa de conta (fica vinculado a quem está
+    // logado, spec: "aparecer em outro aparelho") — se não tiver sessão,
+    // já avisa antes de deixar clicar, em vez de deixar tentar e falhar.
+    if (!isWatch) void this.refreshSaveAvailability();
+  }
+
+  private async refreshSaveAvailability(): Promise<void> {
+    if (!supabase) {
+      this.disableSaveForLogin();
+      return;
+    }
+    const { data } = await supabase.auth.getSession();
+    if (!data.session) this.disableSaveForLogin();
+  }
+
+  private disableSaveForLogin(): void {
+    this.saveButton.disabled = true;
+    this.saveButton.textContent = t('replay.saveNeedsLogin');
+  }
+
+  private async handleSave(onSave: () => Promise<boolean>): Promise<void> {
+    this.saveButton.disabled = true;
+    this.saveButton.textContent = t('replay.saving');
+
+    const ok = await onSave();
+    if (ok) {
+      this.markSaved();
+    } else {
+      this.saveButton.disabled = false;
+      this.saveButton.textContent = t('replay.saveFailed');
+    }
   }
 
   hide(): void {

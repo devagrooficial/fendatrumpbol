@@ -66,3 +66,41 @@ create policy "Usuário atualiza o próprio perfil"
   to authenticated
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+
+-- ---------------------------------------------------------------------------
+-- Replays salvos do FutTrool — antes viviam só em localStorage (presos no
+-- aparelho); agora ficam vinculados à conta, então dá pra ver o mesmo
+-- replay depois de entrar em outro aparelho. Cada linha guarda o clipe
+-- inteiro (snapshots) como jsonb — cabe tranquilo (cada replay tem no
+-- máximo ~200KB, e o app já limita a 5 salvos por pessoa do lado do
+-- cliente, ver REPLAY.MAX_SAVED em core/constants.ts).
+-- ---------------------------------------------------------------------------
+
+create table if not exists public.replays (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  score_p1 integer not null default 0 check (score_p1 >= 0),
+  score_p2 integer not null default 0 check (score_p2 >= 0),
+  snapshots jsonb not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists replays_user_id_created_at_idx on public.replays (user_id, created_at desc);
+
+alter table public.replays enable row level security;
+
+create policy "Usuário lê os próprios replays"
+  on public.replays for select
+  to authenticated
+  using (auth.uid() = user_id);
+
+create policy "Usuário salva os próprios replays"
+  on public.replays for insert
+  to authenticated
+  with check (auth.uid() = user_id);
+
+create policy "Usuário apaga os próprios replays"
+  on public.replays for delete
+  to authenticated
+  using (auth.uid() = user_id);

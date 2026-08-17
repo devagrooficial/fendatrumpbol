@@ -53,10 +53,15 @@ export class SavedReplaysScreen {
     document.body.appendChild(this.root);
   }
 
-  show(replays: SavedReplay[]): void {
-    this.replays = replays;
+  // `replays === null` (sem sessão) e `replays.length === 0` (logado mas
+  // sem nada salvo ainda) são casos diferentes — mensagens diferentes,
+  // pra deixar claro que dá pra ter replays aqui só entrando na conta.
+  show(replays: SavedReplay[] | null): void {
+    this.replays = replays ?? [];
     this.listEl.innerHTML =
-      replays.length === 0
+      replays === null
+        ? `<p class="screen__empty-note">${t('replays.needsLogin')}</p>`
+        : replays.length === 0
         ? `<p class="screen__empty-note">${t('replays.empty')}</p>`
         : replays
             .map(
@@ -75,6 +80,15 @@ export class SavedReplaysScreen {
             )
             .join('');
 
+    this.root.classList.add('screen--visible');
+  }
+
+  // Mostrado assim que a tela abre, antes da lista de verdade chegar do
+  // Supabase (list() agora é uma chamada de rede, não mais leitura
+  // instantânea de localStorage).
+  showLoading(): void {
+    this.replays = [];
+    this.listEl.innerHTML = `<p class="screen__empty-note">${t('replays.loading')}</p>`;
     this.root.classList.add('screen--visible');
   }
 

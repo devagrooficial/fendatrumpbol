@@ -195,10 +195,18 @@ function endMatchFlow(): void {
   });
 }
 
+// list() agora é uma chamada de rede (replays vivem numa conta, seção
+// "replay do FutTrool" das notas) — mostra "carregando" na hora, troca
+// pela lista de verdade quando ela chegar. O guard `appScreen === 'replays'`
+// evita pisar numa tela diferente se o usuário já tiver saído daqui antes
+// da resposta voltar (mesmo padrão do `adsConfigPromise.then` mais acima).
 function goToReplaysList(): void {
   appScreen = 'replays';
   hideAllScreens();
-  savedReplaysScreen.show(replayStore.list());
+  savedReplaysScreen.showLoading();
+  void replayStore.list().then((replays) => {
+    if (appScreen === 'replays') savedReplaysScreen.show(replays);
+  });
 }
 
 function watchSavedReplay(replay: SavedReplay): void {
@@ -208,9 +216,10 @@ function watchSavedReplay(replay: SavedReplay): void {
   replayOverlay.show('watch');
 }
 
-function deleteSavedReplay(id: string): void {
-  replayStore.remove(id);
-  savedReplaysScreen.show(replayStore.list());
+async function deleteSavedReplay(id: string): Promise<void> {
+  await replayStore.remove(id);
+  const replays = await replayStore.list();
+  if (appScreen === 'replays') savedReplaysScreen.show(replays);
 }
 
 // Reagir/Salvar/Pular durante o replay automático de gol (spec seção 8).
@@ -220,8 +229,8 @@ function reactToGoalReplay(): void {
   replayOverlay.markReacted();
 }
 
-function saveGoalReplay(): void {
-  replayStore.save(state.score, replayBuffer.getAll());
+function saveGoalReplay(): Promise<boolean> {
+  return replayStore.save(state.score, replayBuffer.getAll());
 }
 
 // Serve tanto pro botão "Pular" do replay ao vivo (pula pro kickoff) quanto
