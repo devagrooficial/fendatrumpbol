@@ -225,7 +225,10 @@ class AdManager {
   // retângulo fixo — desenhados por cima da bola/jogador quando houver
   // criativo configurado; sem criativo, não desenham nada (não são slots
   // "sempre visíveis" como os de campo).
-  renderBallSkin(ctx: CanvasRenderingContext2D, camera: Camera, pos: { x: number; y: number }, radius: number): boolean {
+  // `spin` (radianos, ver Fx.getBallSpin) gira a textura junto com o
+  // movimento — sem isso, uma bola com skin de anúncio ficava sempre
+  // estática (só a posição mudava), diferente da bola padrão que já gira.
+  renderBallSkin(ctx: CanvasRenderingContext2D, camera: Camera, pos: { x: number; y: number }, radius: number, spin = 0): boolean {
     const creative = this.getCreative('ball-skin');
     if (!creative) return false;
     const img = this.getImage(creative.asset);
@@ -237,7 +240,9 @@ class AdManager {
     ctx.beginPath();
     ctx.arc(center.x, center.y, r, 0, Math.PI * 2);
     ctx.clip();
-    ctx.drawImage(img, center.x - r, center.y - r, r * 2, r * 2);
+    ctx.translate(center.x, center.y);
+    ctx.rotate(spin);
+    ctx.drawImage(img, -r, -r, r * 2, r * 2);
     ctx.restore();
     return true;
   }

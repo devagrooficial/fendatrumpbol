@@ -901,3 +901,37 @@ Dois ajustes de tema pedidos pelo Mateus:
 Confirmado ao vivo: fundo verde-escuro visível ao redor do campo/placas,
 rede branca quadriculada nos dois gols. `npx tsc --noEmit` limpo,
 157/157 testes passando.
+
+## 21. Giro da bola não aparecia — o skin de anúncio cobria o desenho padrão
+
+O Mateus reportou que a bola continuava parecendo estática, sem sensação
+de giro, mesmo depois da entrada 19. Causa: o print que ele mandou mostra
+a bola com um pentágono preto sobre fundo creme — isso é o criativo
+"house" do slot `ball-skin` (`public/futtrool/ads/house-ball-skin.svg`),
+não o desenho padrão da bola. `adManager.renderBallSkin` (seção 10.1,
+"patrocínio premium") substitui o `renderBall` normal sempre que esse
+slot tem criativo carregado — e como sempre tem (a campanha "house" cobre
+todos os slots), a bola de anúncio SEMPRE vence na prática. O giro dos 3
+gomos que adicionei na entrada 19 só existia em `renderBall`, então nunca
+aparecia — daí a sensação de estático que ele reportou.
+
+(Nota: eu tinha checado isso na entrada 19 e, num teste rápido, a bola
+apareceu lisa/branca sem o pentágono — concluí errado que o skin não
+estava ativo. Foi só sorte de timing do carregamento assíncrono da
+imagem; na prática ele quase sempre está pronto a tempo.)
+
+Corrigido: `renderBallSkin` (`ads/adManager.ts`) ganhou um parâmetro
+`spin` opcional — gira a imagem em torno do centro da bola
+(`ctx.translate` + `ctx.rotate` antes do `drawImage`, dentro do clip
+circular) igual ao ângulo acumulado em `Fx.getBallSpin()`. Call site em
+`main.ts` atualizado pra passar `fx.getBallSpin()`.
+
+Verificado por leitura de pixel (não visualmente — a rotação de uma
+textura pequena numa captura de tela pequena é difícil de julgar a
+olho): amostrei a luminosidade média de 4 quadrantes ao redor da bola em
+dois instantes, com a bola em movimento de verdade (`phase: 'playing'` —
+numa primeira tentativa eu tinha travado em `phase: 'kickoff'` pra
+inspecionar com calma, o que também travava o giro sem eu perceber, já
+que `fx.updateBallSpin` só roda com a fase `'playing'`) — os valores dos
+quadrantes mudaram entre as duas amostras, confirmando que o padrão gira
+de verdade. `npx tsc --noEmit` limpo, 157/157 testes passando.

@@ -378,7 +378,7 @@ function renderBallWithSkin(ball: Parameters<typeof renderBall>[2]): void {
   // da bola; sem criativo, cai pro desenho normal (com o giro do Fx —
   // durante replay usa o último giro registrado ao vivo, não recalcula
   // por snapshot, simplificação aceitável pra um detalhe cosmético).
-  if (!adManager.renderBallSkin(ctx, camera, ball.pos, ball.radius)) {
+  if (!adManager.renderBallSkin(ctx, camera, ball.pos, ball.radius, fx.getBallSpin())) {
     renderBall(ctx, camera, ball, fx.getBallSpin());
   }
 }
