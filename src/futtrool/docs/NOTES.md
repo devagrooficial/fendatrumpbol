@@ -935,3 +935,21 @@ inspecionar com calma, o que também travava o giro sem eu perceber, já
 que `fx.updateBallSpin` só roda com a fase `'playing'`) — os valores dos
 quadrantes mudaram entre as duas amostras, confirmando que o padrão gira
 de verdade. `npx tsc --noEmit` limpo, 157/157 testes passando.
+
+## 22. Pentágono do skin da bola cobrindo a bola inteira
+
+O Mateus achou que um pentágono só (canto da textura) não dava a
+sensação de giro direito, mesmo já girando (entrada 21) — pediu pra
+cobrir a bola inteira, não só uma parte.
+
+Redesenhei `public/futtrool/ads/house-ball-skin.svg`: em vez de 1
+pentágono solto, agora são 6 — um central + 5 ao redor (mesmo ângulo,
+raio menor), espalhados tipo o padrão clássico de bola de futebol (não é
+geometricamente um icosaedro truncado de verdade, é só uma estilização
+plana de ícone — mas lê bem como "pentágonos na bola inteira"). Não
+precisou mexer em nenhum código, só o asset SVG — o giro
+(`ctx.rotate(spin)` em `renderBallSkin`, entrada 21) já girava a imagem
+inteira, então automaticamente passou a girar o padrão novo também.
+
+Confirmado ao vivo: o padrão preenche visivelmente a bola toda em vez de
+ficar concentrado num canto.

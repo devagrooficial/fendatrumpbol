@@ -1,4 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
   <rect width="64" height="64" fill="#fdf6ff"/>
-  <path d="M32 8 L48 20 L42 40 L22 40 L16 20 Z" fill="#0b0b0e"/>
+  <!-- Pentágono central + 5 ao redor, padrão clássico de bola de futebol
+       espalhado pela bola inteira (não só um canto), pra ficar mais
+       nítido girando junto com o Fx.getBallSpin(). -->
+  <path d="M32 21 L42.46 28.6 L38.47 40.9 L25.53 40.9 L21.54 28.6 Z" fill="#0b0b0e"/>
+  <path d="M43.76 6.82 L52.32 13.04 L49.05 23.1 L38.47 23.1 L35.2 13.04 Z" fill="#0b0b0e"/>
+  <path d="M51.02 29.18 L59.58 35.4 L56.31 45.46 L45.73 45.46 L42.46 35.4 Z" fill="#0b0b0e"/>
+  <path d="M32 43 L40.56 49.22 L37.29 59.28 L26.71 59.28 L23.44 49.22 Z" fill="#0b0b0e"/>
+  <path d="M12.98 29.18 L21.54 35.4 L18.27 45.46 L7.69 45.46 L4.42 35.4 Z" fill="#0b0b0e"/>
+  <path d="M20.24 6.82 L28.8 13.04 L25.53 23.1 L14.95 23.1 L11.68 13.04 Z" fill="#0b0b0e"/>
 </svg>
