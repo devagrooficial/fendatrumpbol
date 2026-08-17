@@ -1,0 +1,127 @@
+/* Visual consistente com o hub (src/hub/styles.css) — mesmo fundo roxo
+   escuro, mesma paleta de acento azul, mesmo cartão translúcido. */
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  min-height: 100dvh;
+  background: #0a0414;
+  color: #fdf6ff;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.auth {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.25rem;
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(47, 107, 255, 0.18), transparent 60%),
+    radial-gradient(ellipse at 75% 80%, rgba(255, 168, 61, 0.14), transparent 55%);
+}
+
+.auth__card {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  padding: 2rem 1.75rem;
+  background: rgba(24, 12, 40, 0.85);
+  border: 1px solid rgba(253, 246, 255, 0.15);
+  border-radius: 1.25rem;
+}
+
+.auth__title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #2f6bff;
+  text-align: center;
+  text-shadow: 0 0 16px rgba(47, 107, 255, 0.5);
+}
+
+.auth__subtitle {
+  margin: -0.6rem 0 0;
+  font-size: 0.85rem;
+  color: rgba(253, 246, 255, 0.6);
+  text-align: center;
+}
+
+.auth__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.auth__field label {
+  font-size: 0.8rem;
+  color: rgba(253, 246, 255, 0.75);
+}
+
+.auth__field input {
+  padding: 0.75rem 0.9rem;
+  font-size: 1rem;
+  color: #fdf6ff;
+  background: rgba(10, 4, 20, 0.6);
+  border: 1px solid rgba(253, 246, 255, 0.2);
+  border-radius: 0.6rem;
+  outline: none;
+  font-family: inherit;
+}
+
+.auth__field input:focus {
+  border-color: #2f6bff;
+}
+
+.auth__button {
+  padding: 0.85rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0a0414;
+  background: #2f6bff;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.auth__button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.auth__message {
+  margin: 0;
+  font-size: 0.85rem;
+  text-align: center;
+  min-height: 1.1em;
+}
+
+.auth__message--error {
+  color: #ff6b6b;
+}
+
+.auth__message--success {
+  color: #4ade80;
+}
+
+.auth__links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.auth__links a {
+  color: #2f6bff;
+  text-decoration: none;
+}
+
+.auth__links a:hover {
+  text-decoration: underline;
+}
