@@ -10,8 +10,19 @@ const SHAKE_DURATION_S = 0.3;
 const SHAKE_AMPLITUDE_PX = 12;
 const FLASH_DURATION_S = 0.25;
 const PARTICLE_LIFETIME_S = 0.4;
-const KICK_PULSE_DURATION_S = 0.18;
-const KICK_PULSE_MIN_SCALE = 0.7; // o quanto a bola "encolhe" no instante do chute
+// Oscilação amortecida (mola/sanfona), não só um "encolhe e volta": no
+// instante do chute a bola comprime, depois estica passando do tamanho
+// normal (overshoot), comprime de novo (menor), e assim por diante até
+// estabilizar — cada ciclo mais fraco que o anterior. `AMPLITUDE` é o
+// tamanho do primeiro desvio (0.3 = ±30%), `OMEGA` é a velocidade da
+// oscilação (rad/s — maior = ciclos mais rápidos/curtos) e `DAMPING` é
+// quão rápido a amplitude morre a cada segundo; `DURATION_S` é só o teto
+// de segurança pra zerar o timer (nesse ponto a amplitude já é
+// imperceptível: e^(-9×0.35) ≈ 4%).
+const KICK_PULSE_DURATION_S = 0.35;
+const KICK_PULSE_AMPLITUDE = 0.3;
+const KICK_PULSE_OMEGA = 50;
+const KICK_PULSE_DAMPING = 9;
 
 type Particle = { pos: Vec2; vel: Vec2; life: number };
 
@@ -51,19 +62,22 @@ export class Fx {
     this.kickPulseTimer = 0;
   }
 
-  // "Pulsação" no chute (pedido do Mateus): a bola encolhe na hora do
-  // impacto e volta ao tamanho normal com uma pequena mola — só o
-  // tamanho DESENHADO muda (`getBallPulseScale`), o raio de física
-  // (colisão) nunca é afetado, é puro efeito visual.
+  // "Pulsação" (efeito sanfona) no chute: a bola comprime, estica passando
+  // do tamanho normal, comprime de novo e por aí vai, cada vez mais
+  // fraco, até estabilizar — só o tamanho DESENHADO muda
+  // (`getBallPulseScale`), o raio de física (colisão) nunca é afetado, é
+  // puro efeito visual.
   triggerKickPulse(): void {
     this.kickPulseTimer = KICK_PULSE_DURATION_S;
   }
 
   getBallPulseScale(): number {
     if (this.kickPulseTimer <= 0) return 1;
-    const progress = 1 - this.kickPulseTimer / KICK_PULSE_DURATION_S; // 0 (acabou de chutar) -> 1 (normalizou)
-    const eased = 1 - Math.pow(1 - progress, 3); // ease-out cúbico, volta rápido no começo e suaviza no fim
-    return KICK_PULSE_MIN_SCALE + (1 - KICK_PULSE_MIN_SCALE) * eased;
+    const elapsed = KICK_PULSE_DURATION_S - this.kickPulseTimer; // 0 (acabou de chutar) -> DURATION_S (estabilizou)
+    const decay = Math.exp(-KICK_PULSE_DAMPING * elapsed);
+    // cos(0) = 1 no instante do chute -> escala = 1 - AMPLITUDE (comprimida);
+    // depois oscila em torno de 1, com a amplitude encolhendo junto com `decay`.
+    return 1 - KICK_PULSE_AMPLITUDE * decay * Math.cos(KICK_PULSE_OMEGA * elapsed);
   }
 
   getBallTrail(): readonly Vec2[] {
