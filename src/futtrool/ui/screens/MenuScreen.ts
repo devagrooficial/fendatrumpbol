@@ -2,6 +2,8 @@ import { t } from '../../i18n';
 import { Audio } from '../../audio/Audio';
 import type { ProgressionState } from '../../progression/storage';
 import { isFullscreenActive, isFullscreenSupported, toggleFullscreen } from '../../fullscreen';
+import { supabase } from '../../../auth/supabaseClient';
+import { APELIDO_MAX_LENGTH, getApelido, setApelido } from '../../../auth/profile';
 
 export class MenuScreen {
   private readonly root: HTMLDivElement;
@@ -10,8 +12,11 @@ export class MenuScreen {
   private readonly soundToggle: HTMLButtonElement;
   private readonly fullscreenToggle: HTMLButtonElement;
   private readonly placeholderNote: HTMLParagraphElement;
+  private readonly nicknameInput: HTMLInputElement;
+  private readonly nicknameSaveButton: HTMLButtonElement;
+  private readonly nicknameStatus: HTMLParagraphElement;
 
-  constructor(onPlay: () => void, onReplays: () => void) {
+  constructor(onPlay: () => void, onReplays: () => void, onNicknameSaved: (name: string) => void) {
     this.root = document.createElement('div');
     this.root.className = 'screen';
     this.root.innerHTML = `
@@ -29,6 +34,21 @@ export class MenuScreen {
         </div>
         <button type="button" class="screen__button screen__button--secondary" data-replays>${t('menu.replays')}</button>
         <p class="screen__placeholder-note" data-placeholder-note></p>
+        <div class="screen__field">
+          <label class="screen__field-label" for="futtrool-nickname">${t('menu.nickname.label')}</label>
+          <div class="screen__field-row">
+            <input
+              id="futtrool-nickname"
+              type="text"
+              class="screen__input"
+              data-nickname-input
+              maxlength="${APELIDO_MAX_LENGTH}"
+              placeholder="${t('menu.nickname.placeholder')}"
+            />
+            <button type="button" class="screen__button screen__button--secondary" data-nickname-save>${t('menu.nickname.save')}</button>
+          </div>
+          <p class="screen__placeholder-note" data-nickname-status></p>
+        </div>
         <div class="screen__button-row">
           <button type="button" class="screen__toggle" data-sound></button>
           <button type="button" class="screen__toggle" data-fullscreen></button>
@@ -45,6 +65,9 @@ export class MenuScreen {
     const placeholderNote = this.root.querySelector<HTMLParagraphElement>('[data-placeholder-note]');
     const soundToggle = this.root.querySelector<HTMLButtonElement>('[data-sound]');
     const fullscreenToggle = this.root.querySelector<HTMLButtonElement>('[data-fullscreen]');
+    const nicknameInput = this.root.querySelector<HTMLInputElement>('[data-nickname-input]');
+    const nicknameSaveButton = this.root.querySelector<HTMLButtonElement>('[data-nickname-save]');
+    const nicknameStatus = this.root.querySelector<HTMLParagraphElement>('[data-nickname-status]');
     if (
       !levelEl ||
       !coinsEl ||
@@ -54,7 +77,10 @@ export class MenuScreen {
       !replaysButton ||
       !placeholderNote ||
       !soundToggle ||
-      !fullscreenToggle
+      !fullscreenToggle ||
+      !nicknameInput ||
+      !nicknameSaveButton ||
+      !nicknameStatus
     ) {
       throw new Error('Markup do MenuScreen incompleto');
     }
@@ -63,6 +89,9 @@ export class MenuScreen {
     this.soundToggle = soundToggle;
     this.fullscreenToggle = fullscreenToggle;
     this.placeholderNote = placeholderNote;
+    this.nicknameInput = nicknameInput;
+    this.nicknameSaveButton = nicknameSaveButton;
+    this.nicknameStatus = nicknameStatus;
 
     playButton.addEventListener('click', () => {
       Audio.click();
@@ -106,7 +135,78 @@ export class MenuScreen {
     document.addEventListener('fullscreenchange', this.syncFullscreenToggle);
     this.syncFullscreenToggle();
 
+    // Apelido (até 12 caracteres) pra aparecer no jogo no lugar de "Você"
+    // — vinculado à conta (public.users.apelido), não localStorage, pra
+    // seguir o mesmo padrão de "segue a conta em qualquer aparelho" do
+    // resto do jogo (login, ranking, replays).
+    nicknameSaveButton.addEventListener('click', () => {
+      void this.saveNickname(onNicknameSaved);
+    });
+    void this.refreshNicknameField();
+
     document.body.appendChild(this.root);
+  }
+
+  private setNicknameStatus(text: string, kind: 'error' | 'success' | '' = ''): void {
+    this.nicknameStatus.textContent = text;
+    this.nicknameStatus.className = `screen__placeholder-note${kind ? ` screen__placeholder-note--${kind}` : ''}`;
+  }
+
+  private async refreshNicknameField(): Promise<void> {
+    if (!supabase) {
+      this.nicknameInput.disabled = true;
+      this.nicknameSaveButton.disabled = true;
+      this.setNicknameStatus(t('menu.nickname.needsLogin'));
+      return;
+    }
+
+    const { data } = await supabase.auth.getSession();
+    const userId = data.session?.user.id;
+    if (!userId) {
+      this.nicknameInput.disabled = true;
+      this.nicknameSaveButton.disabled = true;
+      this.setNicknameStatus(t('menu.nickname.needsLogin'));
+      return;
+    }
+
+    this.nicknameInput.disabled = false;
+    this.nicknameSaveButton.disabled = false;
+    const apelido = await getApelido(userId);
+    if (apelido) this.nicknameInput.value = apelido;
+  }
+
+  private async saveNickname(onNicknameSaved: (name: string) => void): Promise<void> {
+    if (!supabase) return;
+    Audio.click();
+
+    const value = this.nicknameInput.value.trim();
+    if (!value) {
+      this.setNicknameStatus(t('menu.nickname.empty'), 'error');
+      return;
+    }
+
+    const { data } = await supabase.auth.getSession();
+    const userId = data.session?.user.id;
+    if (!userId) {
+      this.setNicknameStatus(t('menu.nickname.needsLogin'), 'error');
+      return;
+    }
+
+    this.nicknameSaveButton.disabled = true;
+    this.setNicknameStatus(t('menu.nickname.saving'));
+
+    const { error } = await setApelido(userId, value);
+    this.nicknameSaveButton.disabled = false;
+
+    if (error) {
+      this.setNicknameStatus(t('menu.nickname.saveFailed'), 'error');
+      return;
+    }
+
+    const saved = value.slice(0, APELIDO_MAX_LENGTH);
+    this.nicknameInput.value = saved;
+    this.setNicknameStatus(t('menu.nickname.saved'), 'success');
+    onNicknameSaved(saved);
   }
 
   private syncSoundToggle(): void {
@@ -121,6 +221,7 @@ export class MenuScreen {
     this.levelEl.textContent = t('menu.level', { level: progression.level });
     this.coinsEl.textContent = t('menu.coins', { coins: progression.coins });
     this.root.classList.add('screen--visible');
+    void this.refreshNicknameField();
   }
 
   hide(): void {

@@ -31,7 +31,9 @@ import { EndGameScreen } from './ui/screens/EndGameScreen';
 import { SavedReplaysScreen } from './ui/screens/SavedReplaysScreen';
 import { ReplayOverlay } from './ui/ReplayOverlay';
 import { ProgressionStore, type ProgressionState } from './progression/storage';
-import { applyXp, calculateMatchReward, xpForLevel, type MatchOutcome } from './progression/economy';
+import { applyXp, calculateMatchReward, splitExitReward, xpForLevel, type MatchOutcome } from './progression/economy';
+import { supabase } from '../auth/supabaseClient';
+import { getApelido } from '../auth/profile';
 import { ballFromSnapshot, playerFromSnapshot, ReplayBuffer, type ReplaySnapshot } from './replay/buffer';
 import { ReplayPlayer } from './replay/player';
 import { ReplayStore, type SavedReplay } from './replay/storage';
@@ -105,6 +107,29 @@ let chosenDifficulty: AiDifficulty = 'profissional';
 const progressionStore = new ProgressionStore();
 let progression: ProgressionState = progressionStore.load();
 
+// Apelido escolhido pelo jogador (até 12 caracteres, ver src/auth/profile.ts)
+// pra aparecer no lugar de "Você" no replay e na tela de fim de jogo. Cache
+// local porque é usado no loop de render (não dá pra buscar de novo a
+// cada frame) — atualizado no boot e sempre que a MenuScreen salva um
+// apelido novo (ver `new MenuScreen(...)` mais abaixo).
+let displayName = t('hud.you');
+
+async function refreshDisplayName(): Promise<void> {
+  if (!supabase) return;
+  const { data } = await supabase.auth.getSession();
+  const userId = data.session?.user.id;
+  if (!userId) return;
+  const apelido = await getApelido(userId);
+  if (apelido) displayName = apelido;
+}
+void refreshDisplayName();
+
+// Guardado no fim da partida (ver economy.ts: splitExitReward) — só é
+// creditado se a pessoa escolher "Mais uma!" em vez de "Sair". Zerado
+// depois de aplicado, pra não acumular se o próximo fim de jogo não
+// tiver bônus nenhum por algum motivo.
+let pendingRematchBonus = 0;
+
 const replayStore = new ReplayStore();
 const replayBuffer = new ReplayBuffer();
 const replayPlayer = new ReplayPlayer();
@@ -176,8 +201,16 @@ function endMatchFlow(): void {
     { level: progression.level, levelXp: progression.levelXp, xpToNextLevel: xpForLevel(progression.level) },
     reward.xp,
   );
+
+  // Só credita a parte "garantida" (ver economy.ts) na hora — o resto
+  // (`bonusCoins`) fica pendente e só é aplicado se a pessoa clicar em
+  // "Mais uma!" (`claimRematchBonus`, abaixo). "Sair" não faz nada além
+  // de navegar: quem saiu já recebeu a parte dele aqui.
+  const { exitCoins, bonusCoins } = splitExitReward(reward.coins);
+  pendingRematchBonus = bonusCoins;
+
   progression = {
-    coins: progression.coins + reward.coins,
+    coins: progression.coins + exitCoins,
     level: levelAfter.level,
     levelXp: levelAfter.levelXp,
     winStreak: reward.newStreak,
@@ -191,8 +224,19 @@ function endMatchFlow(): void {
     score: state.score,
     difficultyLabel: AI_PROFILES[chosenDifficulty].label,
     reward,
+    exitCoins,
+    youLabel: displayName,
     levelAfter,
   });
+}
+
+function claimRematchBonus(): void {
+  if (pendingRematchBonus > 0) {
+    progression = { ...progression, coins: progression.coins + pendingRematchBonus };
+    progressionStore.save(progression);
+    pendingRematchBonus = 0;
+  }
+  goToMatchmaking(chosenDifficulty);
 }
 
 // list() agora é uma chamada de rede (replays vivem numa conta, seção
@@ -246,10 +290,12 @@ function onReplayOverlaySkipOrBack(): void {
   state = { ...state, phaseTimer: 0 };
 }
 
-const menuScreen = new MenuScreen(goToDifficulty, goToReplaysList);
+const menuScreen = new MenuScreen(goToDifficulty, goToReplaysList, (name) => {
+  displayName = name;
+});
 const difficultyScreen = new DifficultyScreen(goToMatchmaking, goToMenu);
 const matchmakingScreen = new MatchmakingScreen(goToMenu);
-const endGameScreen = new EndGameScreen(goToMenu, () => goToMatchmaking(chosenDifficulty));
+const endGameScreen = new EndGameScreen(goToMenu, claimRematchBonus);
 const savedReplaysScreen = new SavedReplaysScreen(watchSavedReplay, deleteSavedReplay, goToMenu);
 const replayOverlay = new ReplayOverlay(reactToGoalReplay, saveGoalReplay, onReplayOverlaySkipOrBack);
 
@@ -303,6 +349,7 @@ function updateMatch(dt: number): void {
       case 'kick':
         Audio.kick(event.charge);
         fx.spawnKickParticles(event.pos, event.dir, event.charge);
+        fx.triggerKickPulse();
         break;
       case 'dash':
         Audio.dash();
@@ -387,8 +434,10 @@ function renderBallWithSkin(ball: Parameters<typeof renderBall>[2]): void {
   // da bola; sem criativo, cai pro desenho normal (com o giro do Fx —
   // durante replay usa o último giro registrado ao vivo, não recalcula
   // por snapshot, simplificação aceitável pra um detalhe cosmético).
-  if (!adManager.renderBallSkin(ctx, camera, ball.pos, ball.radius, fx.getBallSpin())) {
-    renderBall(ctx, camera, ball, fx.getBallSpin());
+  const spin = fx.getBallSpin();
+  const pulseScale = fx.getBallPulseScale();
+  if (!adManager.renderBallSkin(ctx, camera, ball.pos, ball.radius, spin, pulseScale)) {
+    renderBall(ctx, camera, ball, spin, pulseScale);
   }
 }
 
@@ -397,7 +446,7 @@ function renderReplaySnapshot(snapshot: ReplaySnapshot): void {
   const p2 = playerFromSnapshot('p2', snapshot);
   const ball = ballFromSnapshot(snapshot);
 
-  renderPlayerWithBadge(p1, THEME.TEAM_1, t('hud.you'));
+  renderPlayerWithBadge(p1, THEME.TEAM_1, displayName);
   renderPlayerWithBadge(p2, THEME.TEAM_2, `IA (${AI_PROFILES[chosenDifficulty].label})`);
   renderBallWithSkin(ball);
 }

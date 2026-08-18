@@ -10,6 +10,8 @@ const SHAKE_DURATION_S = 0.3;
 const SHAKE_AMPLITUDE_PX = 12;
 const FLASH_DURATION_S = 0.25;
 const PARTICLE_LIFETIME_S = 0.4;
+const KICK_PULSE_DURATION_S = 0.18;
+const KICK_PULSE_MIN_SCALE = 0.7; // o quanto a bola "encolhe" no instante do chute
 
 type Particle = { pos: Vec2; vel: Vec2; life: number };
 
@@ -19,6 +21,7 @@ export class Fx {
   private flashTimer = 0;
   private particles: Particle[] = [];
   private ballSpin = 0; // radianos acumulados — puramente visual, não é física de verdade
+  private kickPulseTimer = 0;
 
   recordBallPosition(pos: Vec2): void {
     this.trail.push({ x: pos.x, y: pos.y });
@@ -45,6 +48,22 @@ export class Fx {
     this.flashTimer = 0;
     this.particles = [];
     this.ballSpin = 0;
+    this.kickPulseTimer = 0;
+  }
+
+  // "Pulsação" no chute (pedido do Mateus): a bola encolhe na hora do
+  // impacto e volta ao tamanho normal com uma pequena mola — só o
+  // tamanho DESENHADO muda (`getBallPulseScale`), o raio de física
+  // (colisão) nunca é afetado, é puro efeito visual.
+  triggerKickPulse(): void {
+    this.kickPulseTimer = KICK_PULSE_DURATION_S;
+  }
+
+  getBallPulseScale(): number {
+    if (this.kickPulseTimer <= 0) return 1;
+    const progress = 1 - this.kickPulseTimer / KICK_PULSE_DURATION_S; // 0 (acabou de chutar) -> 1 (normalizou)
+    const eased = 1 - Math.pow(1 - progress, 3); // ease-out cúbico, volta rápido no começo e suaviza no fim
+    return KICK_PULSE_MIN_SCALE + (1 - KICK_PULSE_MIN_SCALE) * eased;
   }
 
   getBallTrail(): readonly Vec2[] {
@@ -79,6 +98,7 @@ export class Fx {
   update(dt: number): void {
     this.shakeTimer = Math.max(0, this.shakeTimer - dt);
     this.flashTimer = Math.max(0, this.flashTimer - dt);
+    this.kickPulseTimer = Math.max(0, this.kickPulseTimer - dt);
     this.particles = this.particles
       .map((p) => ({ pos: { x: p.pos.x + p.vel.x * dt, y: p.pos.y + p.vel.y * dt }, vel: p.vel, life: p.life - dt }))
       .filter((p) => p.life > 0);

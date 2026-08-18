@@ -232,6 +232,64 @@ html, body {
   color: rgba(253, 246, 255, 0.45);
 }
 
+.screen__placeholder-note--error {
+  color: #ff6b6b;
+}
+
+.screen__placeholder-note--success {
+  color: #4ade80;
+}
+
+.screen__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+  text-align: left;
+}
+
+.screen__field-label {
+  font-size: 0.75rem;
+  color: rgba(253, 246, 255, 0.6);
+}
+
+.screen__field-row {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+/* `.screen__button` normalmente é largura cheia (empilhado verticalmente
+   nas outras telas) — aqui, ao lado do campo de texto numa fileira, isso
+   brigava com o `flex: 1` do input e espremia ele quase a zero. */
+.screen__field-row .screen__button {
+  width: auto;
+  flex: 0 0 auto;
+  padding: 0.55rem 1.1rem;
+  white-space: nowrap;
+}
+
+.screen__input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.9rem;
+  color: #fdf6ff;
+  background: rgba(253, 246, 255, 0.06);
+  border: 1px solid rgba(253, 246, 255, 0.2);
+  border-radius: 0.6rem;
+  font-family: inherit;
+}
+
+.screen__input:focus {
+  outline: none;
+  border-color: #e93d82;
+}
+
+.screen__input:disabled {
+  opacity: 0.5;
+}
+
 /* Seleção de dificuldade */
 
 .difficulty-cards {

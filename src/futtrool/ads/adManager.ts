@@ -228,14 +228,25 @@ class AdManager {
   // `spin` (radianos, ver Fx.getBallSpin) gira a textura junto com o
   // movimento — sem isso, uma bola com skin de anúncio ficava sempre
   // estática (só a posição mudava), diferente da bola padrão que já gira.
-  renderBallSkin(ctx: CanvasRenderingContext2D, camera: Camera, pos: { x: number; y: number }, radius: number, spin = 0): boolean {
+  // `pulseScale` (Fx.getBallPulseScale()) é o mesmo efeito de "pulsação"
+  // no chute do `renderBall` padrão — precisa estar nos dois lugares
+  // pelo mesmo motivo do spin (o skin de anúncio, quando tem criativo,
+  // substitui o desenho padrão inteiro).
+  renderBallSkin(
+    ctx: CanvasRenderingContext2D,
+    camera: Camera,
+    pos: { x: number; y: number },
+    radius: number,
+    spin = 0,
+    pulseScale = 1,
+  ): boolean {
     const creative = this.getCreative('ball-skin');
     if (!creative) return false;
     const img = this.getImage(creative.asset);
     if (!img.complete || img.naturalWidth === 0) return false;
 
     const center = camera.worldToScreen(pos.x, pos.y);
-    const r = camera.worldLengthToScreen(radius);
+    const r = camera.worldLengthToScreen(radius) * pulseScale;
     ctx.save();
     ctx.beginPath();
     ctx.arc(center.x, center.y, r, 0, Math.PI * 2);

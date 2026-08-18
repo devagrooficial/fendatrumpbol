@@ -7,6 +7,13 @@ export type EndGameData = {
   score: { p1: number; p2: number };
   difficultyLabel: string;
   reward: MatchReward;
+  // Moedas garantidas mesmo saindo — menor que `reward.coins` (o total),
+  // que só é creditado por completo se a pessoa escolher "Mais uma!" em
+  // vez de "Sair" (ver economy.ts: splitExitReward).
+  exitCoins: number;
+  // Apelido escolhido pelo jogador (até 12 caracteres) — substitui o
+  // "Você" fixo de antes.
+  youLabel: string;
   levelAfter: LevelProgress;
 };
 
@@ -28,6 +35,7 @@ export class EndGameScreen {
   private readonly scoreP2El: HTMLSpanElement;
   private readonly resultEl: HTMLParagraphElement;
   private readonly streakEl: HTMLParagraphElement;
+  private readonly rowP1Label: HTMLSpanElement;
   private readonly rowP1Stats: HTMLSpanElement;
   private readonly rowP2Stats: HTMLSpanElement;
   private readonly rowP2Label: HTMLSpanElement;
@@ -55,7 +63,7 @@ export class EndGameScreen {
         <p class="screen__stat-pill screen__stat-pill--coins" data-streak></p>
         <div class="endgame-table">
           <div class="endgame-row endgame-row--p1">
-            <span>${t('hud.you')}</span>
+            <span data-row-p1-label></span>
             <span class="endgame-row__stats" data-row-p1-stats></span>
           </div>
           <div class="endgame-row endgame-row--p2">
@@ -86,6 +94,7 @@ export class EndGameScreen {
     const scoreP2 = this.root.querySelector<HTMLSpanElement>('[data-score-p2]');
     const resultEl = this.root.querySelector<HTMLParagraphElement>('[data-result]');
     const streakEl = this.root.querySelector<HTMLParagraphElement>('[data-streak]');
+    const rowP1Label = this.root.querySelector<HTMLSpanElement>('[data-row-p1-label]');
     const rowP1Stats = this.root.querySelector<HTMLSpanElement>('[data-row-p1-stats]');
     const rowP2Stats = this.root.querySelector<HTMLSpanElement>('[data-row-p2-stats]');
     const rowP2Label = this.root.querySelector<HTMLSpanElement>('[data-row-p2-label]');
@@ -103,6 +112,7 @@ export class EndGameScreen {
       !scoreP2 ||
       !resultEl ||
       !streakEl ||
+      !rowP1Label ||
       !rowP1Stats ||
       !rowP2Stats ||
       !rowP2Label ||
@@ -122,6 +132,7 @@ export class EndGameScreen {
     this.scoreP2El = scoreP2;
     this.resultEl = resultEl;
     this.streakEl = streakEl;
+    this.rowP1Label = rowP1Label;
     this.rowP1Stats = rowP1Stats;
     this.rowP2Stats = rowP2Stats;
     this.rowP2Label = rowP2Label;
@@ -157,6 +168,7 @@ export class EndGameScreen {
     // bem como sequência, mesmo já valendo bônus de moeda desde a 1ª (ver economy.ts).
     this.streakEl.textContent = data.reward.newStreak > 1 ? t('endgame.streak', { streak: data.reward.newStreak }) : '';
 
+    this.rowP1Label.textContent = data.youLabel;
     this.rowP1Stats.textContent = `${t('endgame.goals')}: ${data.score.p1}`;
     this.rowP2Label.textContent = `IA (${data.difficultyLabel})`;
     this.rowP2Stats.textContent = `${t('endgame.goals')}: ${data.score.p2}`;
@@ -166,7 +178,7 @@ export class EndGameScreen {
     this.levelLabelEl.textContent = t('endgame.level', { level: data.levelAfter.level });
     this.levelValueEl.textContent = `${data.levelAfter.levelXp} / ${data.levelAfter.xpToNextLevel} XP`;
 
-    this.exitButton.textContent = t('endgame.exit.reward', { coins: data.reward.coins });
+    this.exitButton.textContent = t('endgame.exit.reward', { coins: data.exitCoins });
     this.rematchButton.textContent = t('endgame.rematch.reward', { coins: data.reward.coins });
 
     // Zera antes de mostrar pra garantir que a transição de largura anima

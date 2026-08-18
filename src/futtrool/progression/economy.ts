@@ -11,6 +11,13 @@ export const ECONOMY = {
   XP_BASE: 40,
   XP_PER_GOAL: 15,
   XP_PER_WIN: 60,
+  // Fração das moedas que "Sair" garante na hora — o resto só entra se a
+  // pessoa escolher "Mais uma!" em vez de sair. Antes os dois botões
+  // mostravam o mesmo valor (o prêmio já tinha sido creditado antes de
+  // qualquer clique, então "Sair"/"Mais uma" eram só rótulos idênticos
+  // sem efeito nenhum na escolha) — agora sair de verdade abre mão de
+  // parte da moeda, pra ser um incentivo de continuar, não só decoração.
+  EXIT_COIN_FRACTION: 0.5,
 };
 
 export function xpForLevel(level: number): number {
@@ -48,6 +55,14 @@ export function calculateMatchReward(
   coins = Math.round(coins * (1 + streakBonusApplied));
 
   return { coins, xp, newStreak, streakBonusApplied };
+}
+
+// Divide o total de moedas ganho na partida entre "garantido, mesmo saindo"
+// e "só se continuar jogando". A soma dos dois sempre bate com `coins`
+// exatamente (sem perder nem inventar moeda no arredondamento).
+export function splitExitReward(coins: number): { exitCoins: number; bonusCoins: number } {
+  const exitCoins = Math.round(coins * ECONOMY.EXIT_COIN_FRACTION);
+  return { exitCoins, bonusCoins: coins - exitCoins };
 }
 
 export type LevelProgress = {

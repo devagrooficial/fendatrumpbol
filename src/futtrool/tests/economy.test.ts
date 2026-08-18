@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyXp, calculateMatchReward, ECONOMY, xpForLevel, type LevelProgress } from '../progression/economy';
+import { applyXp, calculateMatchReward, ECONOMY, splitExitReward, xpForLevel, type LevelProgress } from '../progression/economy';
 
 describe('xpForLevel', () => {
   it('segue a fórmula 300 * n^1.35', () => {
@@ -33,6 +33,23 @@ describe('calculateMatchReward', () => {
   it('o bônus de sequência nunca passa do teto', () => {
     const reward = calculateMatchReward('win', 0, 99);
     expect(reward.streakBonusApplied).toBe(ECONOMY.STREAK_BONUS_CAP);
+  });
+});
+
+describe('splitExitReward', () => {
+  it('divide as moedas entre "sair" e "bônus de continuar" sem perder nem inventar nada', () => {
+    const { exitCoins, bonusCoins } = splitExitReward(35);
+    expect(exitCoins + bonusCoins).toBe(35);
+    expect(exitCoins).toBe(Math.round(35 * ECONOMY.EXIT_COIN_FRACTION));
+  });
+
+  it('nunca devolve negativo mesmo com valores pequenos/ímpares', () => {
+    for (let coins = 0; coins <= 10; coins++) {
+      const { exitCoins, bonusCoins } = splitExitReward(coins);
+      expect(exitCoins).toBeGreaterThanOrEqual(0);
+      expect(bonusCoins).toBeGreaterThanOrEqual(0);
+      expect(exitCoins + bonusCoins).toBe(coins);
+    }
   });
 });
 

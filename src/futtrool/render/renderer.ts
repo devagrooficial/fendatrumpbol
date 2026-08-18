@@ -238,9 +238,12 @@ export function renderPlayerLabel(ctx: CanvasRenderingContext2D, camera: Camera,
 // outro, igual a um desenho simplificado de bola de futebol, girando
 // junto com o deslocamento (ver Fx.updateBallSpin: ω = velocidade/raio,
 // rolamento sem deslizar). Só estilização, não tem física real por trás.
-export function renderBall(ctx: CanvasRenderingContext2D, camera: Camera, ball: Ball, spin = 0): void {
+// `pulseScale` (Fx.getBallPulseScale()) só afeta o tamanho DESENHADO — a
+// bola "pulsa" no chute pra dar sensação de impacto, sem mudar o raio de
+// colisão de verdade.
+export function renderBall(ctx: CanvasRenderingContext2D, camera: Camera, ball: Ball, spin = 0, pulseScale = 1): void {
   const p = camera.worldToScreen(ball.pos.x, ball.pos.y);
-  const r = camera.worldLengthToScreen(ball.radius);
+  const r = camera.worldLengthToScreen(ball.radius) * pulseScale;
 
   ctx.beginPath();
   ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
