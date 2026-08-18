@@ -67,6 +67,23 @@ export class MatchmakingScreen {
     }, duration);
   }
 
+  // Multiplayer 1v1 (server/): a espera aqui não tem duração fixa — só
+  // termina quando o servidor pareia com outro jogador de verdade (ou a
+  // pessoa cancela). Quem decide encerrar essa tela é o main.ts, chamando
+  // `hide()` na hora certa (partida encontrada, erro de conexão, cancelado).
+  showOnline(): void {
+    this.subtitleEl.textContent = t('matchmaking.online.subtitle');
+    this.root.classList.add('screen--visible');
+    showAdSlot(this.heroAd, 'loading-hero');
+
+    const startedAt = performance.now();
+    this.stopTimers();
+    this.intervalId = setInterval(() => {
+      const elapsed = (performance.now() - startedAt) / 1000;
+      this.countdownEl.textContent = `${elapsed.toFixed(1)}s`;
+    }, 100);
+  }
+
   hide(): void {
     this.stopTimers();
     this.root.classList.remove('screen--visible');

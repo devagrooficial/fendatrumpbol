@@ -16,7 +16,12 @@ export class MenuScreen {
   private readonly nicknameSaveButton: HTMLButtonElement;
   private readonly nicknameStatus: HTMLParagraphElement;
 
-  constructor(onPlay: () => void, onReplays: () => void, onNicknameSaved: (name: string) => void) {
+  constructor(
+    onPlay: () => void,
+    onPlayOnline: () => void,
+    onReplays: () => void,
+    onNicknameSaved: (name: string) => void,
+  ) {
     this.root = document.createElement('div');
     this.root.className = 'screen';
     this.root.innerHTML = `
@@ -28,6 +33,7 @@ export class MenuScreen {
           <span class="screen__stat-pill screen__stat-pill--coins" data-coins></span>
         </div>
         <button type="button" class="screen__button" data-play>${t('menu.play')}</button>
+        <button type="button" class="screen__button screen__button--secondary" data-play-online>${t('menu.playOnline')}</button>
         <div class="screen__button-row">
           <button type="button" class="screen__button screen__button--secondary" data-inventory>${t('menu.inventory')}</button>
           <button type="button" class="screen__button screen__button--secondary" data-shop>${t('menu.shop')}</button>
@@ -60,6 +66,7 @@ export class MenuScreen {
     const levelEl = this.root.querySelector<HTMLSpanElement>('[data-level]');
     const coinsEl = this.root.querySelector<HTMLSpanElement>('[data-coins]');
     const playButton = this.root.querySelector<HTMLButtonElement>('[data-play]');
+    const playOnlineButton = this.root.querySelector<HTMLButtonElement>('[data-play-online]');
     const inventoryButton = this.root.querySelector<HTMLButtonElement>('[data-inventory]');
     const shopButton = this.root.querySelector<HTMLButtonElement>('[data-shop]');
     const replaysButton = this.root.querySelector<HTMLButtonElement>('[data-replays]');
@@ -73,6 +80,7 @@ export class MenuScreen {
       !levelEl ||
       !coinsEl ||
       !playButton ||
+      !playOnlineButton ||
       !inventoryButton ||
       !shopButton ||
       !replaysButton ||
@@ -93,6 +101,11 @@ export class MenuScreen {
     this.nicknameInput = nicknameInput;
     this.nicknameSaveButton = nicknameSaveButton;
     this.nicknameStatus = nicknameStatus;
+
+    playOnlineButton.addEventListener('click', () => {
+      Audio.click();
+      onPlayOnline();
+    });
 
     playButton.addEventListener('click', () => {
       Audio.click();
@@ -146,6 +159,15 @@ export class MenuScreen {
     void this.refreshNicknameField();
 
     document.body.appendChild(this.root);
+  }
+
+  // Aviso de uma linha no mesmo slot do "Em breve" — usado hoje pra avisar
+  // que a partida online caiu (adversário saiu, ou nem deu pra conectar no
+  // servidor). `show()` não limpa isso sozinho de propósito (mesma regra
+  // que já valia pro "Em breve": some só quando outra coisa escreve por
+  // cima ou a pessoa recarrega a tela).
+  showNotice(text: string): void {
+    this.placeholderNote.textContent = text;
   }
 
   private setNicknameStatus(text: string, kind: 'error' | 'success' | '' = ''): void {

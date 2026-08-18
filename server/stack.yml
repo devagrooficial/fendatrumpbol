@@ -1,0 +1,37 @@
+# Deploy no hdservlog (Docker Swarm, "SetupOrion") — isolado de tudo que já
+# roda lá (Chatwoot, n8n, Evolution API, Supabase self-hosted etc.): stack
+# própria, sem tocar em nenhum serviço/rede existente além de anexar na
+# mesma rede overlay que o Traefik já escuta (hdservlognet).
+#
+# Labels seguem exatamente o mesmo padrão observado no n8n_n8n_editor
+# (docker service inspect n8n_n8n_editor) — mesmo certresolver, mesmo
+# entrypoint, só troca host/porta/nome do serviço.
+#
+# docker build -f server/Dockerfile -t futtrool-server:latest .
+# docker stack deploy -c server/stack.yml futtrool
+
+version: "3.7"
+
+services:
+  futtrool_ws:
+    image: futtrool-server:latest
+    environment:
+      - PORT=8787
+    networks:
+      - hdservlognet
+    deploy:
+      replicas: 1
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.futtrool_ws.entrypoints=websecure"
+        - "traefik.http.routers.futtrool_ws.rule=Host(`mateus.sysalmeida.com.br`)"
+        - "traefik.http.routers.futtrool_ws.service=futtrool_ws"
+        - "traefik.http.routers.futtrool_ws.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.futtrool_ws.loadbalancer.passHostHeader=1"
+        - "traefik.http.services.futtrool_ws.loadbalancer.server.port=8787"
+
+networks:
+  hdservlognet:
+    external: true
+    attachable: true
+    name: hdservlognet

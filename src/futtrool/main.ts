@@ -16,7 +16,8 @@ import { Fx } from './render/fx';
 import { FIXED_TIMESTEP_S, MATCH, REPLAY } from './core/constants';
 import { step } from './core/simulation';
 import { createMatchState } from './core/rules';
-import type { Command, GameState } from './core/types';
+import type { Command, GameState, MatchEvent, PlayerId } from './core/types';
+import { OnlineClient } from './net/onlineClient';
 import { KeyboardInput } from './input/keyboard';
 import { TouchInput } from './input/joystick';
 import { createAiState, decideCommand, type AiState } from './core/ai/brain';
@@ -77,6 +78,10 @@ const keyboard = new KeyboardInput();
 const hasTouch = navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
 const touch = hasTouch ? new TouchInput(canvas, () => ({ w: window.innerWidth, h: window.innerHeight })) : null;
 
+// Sempre lê o teclado como P1 (WASD/Espaço/Shift/Ctrl) mesmo quando o
+// servidor online atribuiu o slot p2 pra esse jogador (ver localPlayerId) —
+// cada pessoa está no seu próprio teclado, então não faz sentido usar o
+// esquema de p2 (setas) só por causa de um detalhe interno da simulação.
 function getP1Command(tick: number): Command {
   const fromKeyboard = keyboard.getCommand('p1', tick);
   if (!touch) return fromKeyboard;
@@ -100,9 +105,23 @@ function getP1Command(tick: number): Command {
 // existe de verdade a partir de 'match').
 // ---------------------------------------------------------------------------
 
-type AppScreen = 'menu' | 'difficulty' | 'matchmaking' | 'match' | 'endgame' | 'replays' | 'watchingReplay';
+type AppScreen = 'menu' | 'difficulty' | 'matchmaking' | 'onlineMatchmaking' | 'match' | 'endgame' | 'replays' | 'watchingReplay';
 let appScreen: AppScreen = 'menu';
 let chosenDifficulty: AiDifficulty = 'profissional';
+
+// Multiplayer 1v1 (server/, ver plano de multiplayer): quando onlineMode é
+// true, a simulação NÃO roda localmente (nem em updateMatch nem em lugar
+// nenhum) — o servidor autoritativo é quem chama step(), e o cliente só
+// manda o Command do jogador local a cada tick e desenha o último GameState
+// que o servidor mandou de volta. localPlayerId é 'p1' fora do modo online
+// (humano sempre joga de p1 contra a IA).
+let onlineMode = false;
+let localPlayerId: PlayerId = 'p1';
+let onlineClient: OnlineClient | null = null;
+// Eventos ('goal', 'kick' etc.) que chegaram do servidor desde o último
+// frame local — updateMatch() drena essa fila a cada chamada, do mesmo
+// jeito que consumiria o retorno de step() no modo offline.
+let pendingOnlineEvents: MatchEvent[] = [];
 
 const progressionStore = new ProgressionStore();
 let progression: ProgressionState = progressionStore.load();
@@ -171,9 +190,10 @@ function goToMatchmaking(difficulty: AiDifficulty): void {
   matchmakingScreen.show(AI_PROFILES[difficulty].label, startMatch);
 }
 
-function startMatch(): void {
-  state = createMatchState(Date.now(), MATCH.KICKOFF_COUNTDOWN_MS);
-  aiState = createAiState(Date.now());
+// Reset visual/tela compartilhado entre começar uma partida contra a IA
+// (startMatch) e entrar numa partida online já em andamento (startOnlineMatch)
+// — `state` já precisa estar atualizado por quem chama, antes de chamar isso.
+function resetMatchVisuals(): void {
   fx.reset();
   replayBuffer.clear();
   inGoalReplayWindow = false;
@@ -184,6 +204,72 @@ function startMatch(): void {
   appScreen = 'match';
   hideAllScreens();
   adManager.trackDomSlotShown('scoreboard-sponsor');
+}
+
+function startMatch(): void {
+  state = createMatchState(Date.now(), MATCH.KICKOFF_COUNTDOWN_MS);
+  aiState = createAiState(Date.now());
+  onlineMode = false;
+  localPlayerId = 'p1';
+  resetMatchVisuals();
+}
+
+function goToMenuWithNotice(text: string): void {
+  goToMenu();
+  menuScreen.showNotice(text);
+}
+
+function onMatchmakingCancel(): void {
+  onlineClient?.disconnect();
+  onlineClient = null;
+  goToMenu();
+}
+
+function startOnlineMatch(initialState: GameState, playerId: PlayerId): void {
+  state = initialState;
+  onlineMode = true;
+  localPlayerId = playerId;
+  resetMatchVisuals();
+}
+
+function goToOnlineMatchmaking(): void {
+  appScreen = 'onlineMatchmaking';
+  hideAllScreens();
+  matchmakingScreen.showOnline();
+
+  const client = new OnlineClient();
+  onlineClient = client;
+  let assignedPlayerId: PlayerId | null = null;
+  let matchStarted = false;
+
+  client.connect({
+    onAssigned: (playerId) => {
+      assignedPlayerId = playerId;
+    },
+    onState: (newState, events) => {
+      if (!matchStarted) {
+        matchStarted = true;
+        // Servidor sempre manda 'assigned' antes do primeiro 'state' (ver
+        // server/src/index.ts) — na prática nunca é null aqui, o fallback é
+        // só pra não deixar o tipo escapar como PlayerId | null.
+        startOnlineMatch(newState, assignedPlayerId ?? 'p1');
+        return;
+      }
+      state = newState;
+      pendingOnlineEvents.push(...events);
+    },
+    onOpponentLeft: () => {
+      onlineClient = null;
+      onlineMode = false;
+      goToMenuWithNotice(t('matchmaking.online.opponentLeft'));
+    },
+    onClose: () => {
+      if (appScreen === 'onlineMatchmaking') {
+        onlineClient = null;
+        goToMenuWithNotice(t('matchmaking.online.connectionFailed'));
+      }
+    },
+  });
 }
 
 function endMatchFlow(): void {
@@ -290,11 +376,11 @@ function onReplayOverlaySkipOrBack(): void {
   state = { ...state, phaseTimer: 0 };
 }
 
-const menuScreen = new MenuScreen(goToDifficulty, goToReplaysList, (name) => {
+const menuScreen = new MenuScreen(goToDifficulty, goToOnlineMatchmaking, goToReplaysList, (name) => {
   displayName = name;
 });
 const difficultyScreen = new DifficultyScreen(goToMatchmaking, goToMenu);
-const matchmakingScreen = new MatchmakingScreen(goToMenu);
+const matchmakingScreen = new MatchmakingScreen(onMatchmakingCancel);
 const endGameScreen = new EndGameScreen(goToMenu, claimRematchBonus);
 const savedReplaysScreen = new SavedReplaysScreen(watchSavedReplay, deleteSavedReplay, goToMenu);
 const replayOverlay = new ReplayOverlay(reactToGoalReplay, saveGoalReplay, onReplayOverlaySkipOrBack);
@@ -322,7 +408,18 @@ adsConfigPromise
 // parado no último quadro (as telas de UI cobrem tudo por cima via DOM).
 // ---------------------------------------------------------------------------
 
-function updateMatch(dt: number): void {
+// Modo offline: roda step() localmente contra a IA, como sempre. Modo
+// online: NÃO simula nada aqui — só manda o Command local pro servidor e
+// devolve os eventos que já chegaram das mensagens 'state' recebidas desde
+// o último frame (`state` em si já foi atualizado direto pelo listener de
+// mensagem, ver goToOnlineMatchmaking). Mesma "forma" de retorno (events[])
+// nos dois casos, pra updateMatch não precisar saber a diferença.
+function advanceMatchState(dt: number): MatchEvent[] {
+  if (onlineMode) {
+    onlineClient?.sendCommand(getP1Command(state.tick));
+    return pendingOnlineEvents.splice(0);
+  }
+
   const p1 = getP1Command(state.tick);
   // A IA só produz Command a partir do GameState — mesma regra de qualquer
   // jogador (seção 5 da spec: sem acesso privilegiado).
@@ -331,6 +428,11 @@ function updateMatch(dt: number): void {
 
   const result = step(state, { p1, p2: aiDecision.command }, dt);
   state = result.state;
+  return result.events;
+}
+
+function updateMatch(dt: number): void {
+  const events = advanceMatchState(dt);
 
   // Câmera atualizada no passo fixo (não no render) pra a suavização (lerp
   // flat, seção 11) não depender da taxa de atualização do monitor.
@@ -344,7 +446,7 @@ function updateMatch(dt: number): void {
   fx.update(dt);
   adManager.trackFieldVisibility(camera, dt);
 
-  for (const event of result.events) {
+  for (const event of events) {
     switch (event.type) {
       case 'kick':
         Audio.kick(event.charge);
@@ -488,7 +590,8 @@ function render(_alpha: number): void {
   renderMatchHud(ctx, window.innerWidth, window.innerHeight, state, `IA: ${aiState.fsmState}`, camera);
 
   if (touch && appScreen === 'match' && !inGoalReplayWindow) {
-    renderTouchControls(ctx, touch.getLayout(), touch.joystickVisual, state.players.p1.kickCharge, state.players.p1.boostStamina);
+    const localPlayer = state.players[localPlayerId];
+    renderTouchControls(ctx, touch.getLayout(), touch.joystickVisual, localPlayer.kickCharge, localPlayer.boostStamina);
   }
 }
 
@@ -521,8 +624,16 @@ if (import.meta.env.DEV) {
     goToMenu,
     goToDifficulty,
     goToMatchmaking,
+    goToOnlineMatchmaking,
     startMatch,
     goToReplaysList,
+    getP1Command: () => getP1Command(state.tick),
+    isOnlineMode: () => onlineMode,
+    hasOnlineClient: () => onlineClient !== null,
+    // Dispara um passo do loop manualmente — útil pra testar em aba sem
+    // foco (requestAnimationFrame fica pausado/throttled em background,
+    // então o loop de verdade não rodaria sozinho ali).
+    forceUpdateTick: () => update(FIXED_TIMESTEP_S),
     listSavedReplays: () => replayStore.list(),
   };
 }

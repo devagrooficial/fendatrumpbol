@@ -2,6 +2,7 @@
   "menu.title": "FutTrool",
   "menu.subtitle": "Futebol 1v1 top-down",
   "menu.play": "Jogar",
+  "menu.playOnline": "Jogar Online (beta)",
   "menu.replays": "Replays",
   "menu.inventory": "Inventário",
   "menu.shop": "Loja",
@@ -33,6 +34,9 @@
 
   "matchmaking.title": "Buscando partida...",
   "matchmaking.subtitle": "1v1 casual · {difficulty}",
+  "matchmaking.online.subtitle": "1v1 online · esperando adversário",
+  "matchmaking.online.opponentLeft": "O adversário saiu da partida",
+  "matchmaking.online.connectionFailed": "Não deu pra conectar no servidor — tenta de novo",
   "matchmaking.cancel": "Cancelar",
 
   "hud.kickoffIn": "Kickoff em {seconds}s",
