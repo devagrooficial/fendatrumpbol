@@ -3,7 +3,7 @@ import { Audio } from '../../audio/Audio';
 import type { ProgressionState } from '../../progression/storage';
 import { isFullscreenActive, isFullscreenSupported, toggleFullscreen } from '../../fullscreen';
 import { supabase } from '../../../auth/supabaseClient';
-import { APELIDO_MAX_LENGTH, getApelido, setApelido } from '../../../auth/profile';
+import { APELIDO_MAX_LENGTH, APELIDO_MIN_LENGTH, getApelido, setApelido } from '../../../auth/profile';
 
 export class MenuScreen {
   private readonly root: HTMLDivElement;
@@ -43,6 +43,7 @@ export class MenuScreen {
               class="screen__input"
               data-nickname-input
               maxlength="${APELIDO_MAX_LENGTH}"
+              minlength="${APELIDO_MIN_LENGTH}"
               placeholder="${t('menu.nickname.placeholder')}"
             />
             <button type="button" class="screen__button screen__button--secondary" data-nickname-save>${t('menu.nickname.save')}</button>
@@ -180,8 +181,8 @@ export class MenuScreen {
     Audio.click();
 
     const value = this.nicknameInput.value.trim();
-    if (!value) {
-      this.setNicknameStatus(t('menu.nickname.empty'), 'error');
+    if (value.length < APELIDO_MIN_LENGTH) {
+      this.setNicknameStatus(t('menu.nickname.tooShort', { min: APELIDO_MIN_LENGTH }), 'error');
       return;
     }
 

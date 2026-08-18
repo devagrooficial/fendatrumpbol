@@ -17,11 +17,14 @@ export async function upsertProfile(userId: string, email: string, nome: string)
 
 // Apelido: nome curto escolhido só pra aparecer DENTRO do jogo (acima do
 // jogador, na tela de fim de partida) — separado do `nome` do cadastro,
-// que pode ser bem mais longo. Limite de 12 caracteres batendo com a
-// coluna `apelido varchar(12)` (supabase/schema.sql) — o Postgres já
-// recusa qualquer coisa maior que isso, o corte aqui é só pra dar
-// feedback melhor na hora, sem esperar o erro do servidor.
-export const APELIDO_MAX_LENGTH = 12;
+// que pode ser bem mais longo. Limites batendo com a coluna
+// `apelido varchar(15)` (supabase/schema.sql) — o Postgres já recusa
+// qualquer coisa maior que isso; o corte/checagem aqui são só pra dar
+// feedback melhor na hora, sem esperar o erro do servidor (o mínimo de 3
+// não tem como o Postgres garantir sozinho com só o `varchar`, então essa
+// checagem do lado do cliente é a única linha de defesa pra isso).
+export const APELIDO_MAX_LENGTH = 15;
+export const APELIDO_MIN_LENGTH = 3;
 
 export async function getApelido(userId: string): Promise<string | null> {
   if (!supabase) return null;
@@ -37,7 +40,9 @@ export async function setApelido(userId: string, apelido: string): Promise<{ err
   if (!supabase) return { error: 'Supabase não configurado' };
 
   const trimmed = apelido.trim().slice(0, APELIDO_MAX_LENGTH);
-  if (!trimmed) return { error: 'Nome vazio' };
+  if (trimmed.length < APELIDO_MIN_LENGTH) {
+    return { error: `Precisa ter pelo menos ${APELIDO_MIN_LENGTH} caracteres` };
+  }
 
   const { error } = await supabase.from('users').upsert({ user_id: userId, apelido: trimmed }, { onConflict: 'user_id' });
   return { error: error?.message ?? null };

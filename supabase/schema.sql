@@ -107,12 +107,21 @@ create policy "Usuário apaga os próprios replays"
 
 
 -- ---------------------------------------------------------------------------
--- Apelido do FutTrool: nome curto (até 12 caracteres, o próprio varchar(12)
--- já recusa qualquer coisa maior) que a pessoa escolhe pra aparecer DENTRO
--- do jogo (acima do jogador, tela de fim de partida) — separado do `nome`
+-- Apelido do FutTrool: nome curto (3 a 15 caracteres — o mínimo só é
+-- garantido do lado do cliente, ver src/auth/profile.ts; o `varchar(15)`
+-- só cobre o máximo) que a pessoa escolhe pra aparecer DENTRO do jogo
+-- (acima do jogador, tela de fim de partida) — separado do `nome`
 -- completo do cadastro, que pode ser bem mais longo e quebraria o layout.
 -- Já cai sob as políticas de RLS que a public.users já tem (mesma tabela).
+--
+-- O `alter column ... type` funciona tanto se a coluna nunca existiu
+-- (acabou de ser criada pelo `add column` acima, já no tamanho certo)
+-- quanto se já existia como varchar(12) de uma versão anterior desse
+-- arquivo — seguro rodar de novo dos dois jeitos.
 -- ---------------------------------------------------------------------------
 
 alter table public.users
-  add column if not exists apelido varchar(12);
+  add column if not exists apelido varchar(15);
+
+alter table public.users
+  alter column apelido type varchar(15);

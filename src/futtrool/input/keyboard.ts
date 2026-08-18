@@ -53,7 +53,21 @@ export class KeyboardInput {
     document.addEventListener('visibilitychange', this.onVisibilityChange);
   }
 
+  // Sem isso, digitar em QUALQUER campo de texto da tela (ex.: o apelido
+  // no menu) travava/comia teclas como W/A/S/D, Espaço e Enter — porque
+  // esse listener fica no `window` e intercepta o teclado inteiro pro
+  // jogo, mesmo com o foco num `<input>`. "S" comendo é literalmente
+  // KeyS, o bind de "andar pra baixo" do P1.
+  private isTypingInField(): boolean {
+    const el = document.activeElement;
+    if (!el) return false;
+    const tag = el.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || (el as HTMLElement).isContentEditable;
+  }
+
   private readonly onKeyDown = (e: KeyboardEvent): void => {
+    if (this.isTypingInField()) return;
+
     if (!this.pressed.has(e.code)) {
       if (e.code === P1_BINDING.dash) this.dashPending.add('p1');
       if (e.code === P2_BINDING.dash) this.dashPending.add('p2');
@@ -62,6 +76,10 @@ export class KeyboardInput {
     if (ALL_CODES.has(e.code)) e.preventDefault();
   };
 
+  // De propósito SEM o guard de `isTypingInField` — se uma tecla de jogo
+  // já estava pressionada antes de clicar num campo de texto, ela precisa
+  // poder ser solta normalmente, senão fica "presa" pra sempre em
+  // `pressed` (o jogador voltaria pro jogo andando sozinho).
   private readonly onKeyUp = (e: KeyboardEvent): void => {
     this.pressed.delete(e.code);
   };
