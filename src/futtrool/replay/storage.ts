@@ -11,15 +11,19 @@
 
 import { supabase } from '../../auth/supabaseClient';
 import { REPLAY } from '../core/constants';
+import type { TeamId } from '../core/types';
 import type { ReplaySnapshot } from './buffer';
 
 export type SavedReplay = {
   id: string;
   savedAt: string; // ISO 8601
-  score: { p1: number; p2: number };
+  score: Record<TeamId, number>;
   snapshots: ReplaySnapshot[];
 };
 
+// Nomes de coluna no Postgres continuam score_p1/score_p2 (não vale a pena
+// migrar só por causa do nome) — mapeiam pra teamA/teamB, que é sempre
+// exatamente 2 times independente do tamanho de cada um (1v1, 2v2, ...).
 type ReplayRow = {
   id: string;
   created_at: string;
@@ -32,7 +36,7 @@ function fromRow(row: ReplayRow): SavedReplay {
   return {
     id: row.id,
     savedAt: row.created_at,
-    score: { p1: row.score_p1, p2: row.score_p2 },
+    score: { teamA: row.score_p1, teamB: row.score_p2 },
     snapshots: row.snapshots,
   };
 }
@@ -52,7 +56,7 @@ export class ReplayStore {
     return (data as ReplayRow[]).map(fromRow);
   }
 
-  async save(score: { p1: number; p2: number }, snapshots: ReplaySnapshot[]): Promise<boolean> {
+  async save(score: Record<TeamId, number>, snapshots: ReplaySnapshot[]): Promise<boolean> {
     if (!supabase) return false;
     const { data: sessionData } = await supabase.auth.getSession();
     const userId = sessionData.session?.user.id;
@@ -60,8 +64,8 @@ export class ReplayStore {
 
     const { error } = await supabase.from('replays').insert({
       user_id: userId,
-      score_p1: score.p1,
-      score_p2: score.p2,
+      score_p1: score.teamA,
+      score_p2: score.teamB,
       snapshots,
     });
     if (error) return false;

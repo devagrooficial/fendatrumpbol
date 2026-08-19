@@ -11,7 +11,8 @@ export class MatchmakingScreen {
   private readonly root: HTMLDivElement;
   private readonly subtitleEl: HTMLParagraphElement;
   private readonly countdownEl: HTMLParagraphElement;
-  private readonly queueStatusEl: HTMLParagraphElement;
+  private readonly lobbyStatusEl: HTMLParagraphElement;
+  private readonly startNowButton: HTMLButtonElement;
   private readonly roomInfoEl: HTMLDivElement;
   private readonly roomLinkInput: HTMLInputElement;
   private readonly copyStatusEl: HTMLParagraphElement;
@@ -19,7 +20,7 @@ export class MatchmakingScreen {
   private timeoutId: ReturnType<typeof setTimeout> | null = null;
   private intervalId: ReturnType<typeof setInterval> | null = null;
 
-  constructor(onCancel: () => void) {
+  constructor(onCancel: () => void, onStartNow: () => void) {
     this.root = document.createElement('div');
     this.root.className = 'screen';
     this.root.innerHTML = `
@@ -29,7 +30,7 @@ export class MatchmakingScreen {
         <div data-hero-ad-slot></div>
         <div class="matchmaking-spinner"></div>
         <p class="matchmaking-countdown" data-countdown></p>
-        <p class="screen__placeholder-note" data-queue-status></p>
+        <p class="screen__placeholder-note" data-lobby-status></p>
         <div class="screen__field" data-room-info hidden>
           <p class="screen__field-label">${t('matchmaking.online.roomLinkLabel')}</p>
           <div class="screen__field-row">
@@ -38,6 +39,7 @@ export class MatchmakingScreen {
           </div>
           <p class="screen__placeholder-note" data-copy-status></p>
         </div>
+        <button type="button" class="screen__button screen__button--secondary" data-start-now hidden>${t('matchmaking.online.startNow')}</button>
         <button type="button" class="screen__button screen__button--secondary" data-cancel>${t('matchmaking.cancel')}</button>
       </div>
     `;
@@ -47,27 +49,30 @@ export class MatchmakingScreen {
 
     const subtitleEl = this.root.querySelector<HTMLParagraphElement>('[data-subtitle]');
     const countdownEl = this.root.querySelector<HTMLParagraphElement>('[data-countdown]');
-    const queueStatusEl = this.root.querySelector<HTMLParagraphElement>('[data-queue-status]');
+    const lobbyStatusEl = this.root.querySelector<HTMLParagraphElement>('[data-lobby-status]');
     const roomInfoEl = this.root.querySelector<HTMLDivElement>('[data-room-info]');
     const roomLinkInput = this.root.querySelector<HTMLInputElement>('[data-room-link]');
     const copyLinkButton = this.root.querySelector<HTMLButtonElement>('[data-copy-link]');
     const copyStatusEl = this.root.querySelector<HTMLParagraphElement>('[data-copy-status]');
+    const startNowButton = this.root.querySelector<HTMLButtonElement>('[data-start-now]');
     const cancelButton = this.root.querySelector<HTMLButtonElement>('[data-cancel]');
     if (
       !subtitleEl ||
       !countdownEl ||
-      !queueStatusEl ||
+      !lobbyStatusEl ||
       !roomInfoEl ||
       !roomLinkInput ||
       !copyLinkButton ||
       !copyStatusEl ||
+      !startNowButton ||
       !cancelButton
     ) {
       throw new Error('Markup do MatchmakingScreen incompleto');
     }
     this.subtitleEl = subtitleEl;
     this.countdownEl = countdownEl;
-    this.queueStatusEl = queueStatusEl;
+    this.lobbyStatusEl = lobbyStatusEl;
+    this.startNowButton = startNowButton;
     this.roomInfoEl = roomInfoEl;
     this.roomLinkInput = roomLinkInput;
     this.copyStatusEl = copyStatusEl;
@@ -75,6 +80,11 @@ export class MatchmakingScreen {
     copyLinkButton.addEventListener('click', () => {
       Audio.click();
       void this.copyRoomLink();
+    });
+
+    startNowButton.addEventListener('click', () => {
+      Audio.click();
+      onStartNow();
     });
 
     cancelButton.addEventListener('click', () => {
@@ -118,15 +128,17 @@ export class MatchmakingScreen {
     }, duration);
   }
 
-  // Multiplayer 1v1 (server/): a espera aqui não tem duração fixa — só
-  // termina quando o servidor pareia com outro jogador de verdade (ou a
-  // pessoa cancela). Quem decide encerrar essa tela é o main.ts, chamando
-  // `hide()` na hora certa (partida encontrada, erro de conexão, cancelado).
+  // Multiplayer online (server/): a espera aqui não tem duração fixa — só
+  // termina quando o servidor pareia gente de verdade (ou a pessoa
+  // cancela/manda começar mesmo incompleto). Quem decide encerrar essa
+  // tela é o main.ts, chamando `hide()` na hora certa (partida encontrada,
+  // erro de conexão, cancelado).
   showOnline(): void {
     this.subtitleEl.textContent = t('matchmaking.online.subtitle');
     this.root.classList.add('screen--visible');
     this.roomInfoEl.hidden = true;
-    this.queueStatusEl.textContent = '';
+    this.lobbyStatusEl.textContent = '';
+    this.startNowButton.hidden = true;
     showAdSlot(this.heroAd, 'loading-hero');
 
     const startedAt = performance.now();
@@ -137,21 +149,18 @@ export class MatchmakingScreen {
     }, 100);
   }
 
-  // Só relevante durante showOnline() em modo fila aleatória (quickMatch) —
-  // sala privada não tem fila, então main.ts nunca chama isso nesse modo.
-  setQueueStatus(waitingCount: number): void {
-    // waitingCount inclui a própria conexão — "esperando..." plano quando
-    // não há mais ninguém (0 outras pessoas), sem forçar singular/plural
-    // estranho tipo "0 pessoas".
-    const others = Math.max(0, waitingCount - 1);
-    this.queueStatusEl.textContent =
-      others === 0
-        ? t('matchmaking.online.queueEmpty')
-        : t('matchmaking.online.queueStatus', { count: others });
+  // Progresso de quem já entrou na sala/fila — `filled` conta só humanos
+  // (times de 1 jogador — 1v1 — sempre auto-começam ao encher, então nunca
+  // mostram o botão de "começar mesmo assim"; times maiores mostram, pra
+  // dar pra jogar contra bot sem esperar mais gente).
+  setLobbyStatus(teamSize: number, filled: { teamA: number; teamB: number }, capacity: number): void {
+    const total = filled.teamA + filled.teamB;
+    this.lobbyStatusEl.textContent = t('matchmaking.online.lobbyStatus', { filled: total, capacity });
+    this.startNowButton.hidden = teamSize <= 1;
   }
 
   // Sala privada (convite por link/código) — mesma tela de espera, mas com
-  // o link pra compartilhar em vez de contador de fila.
+  // o link pra compartilhar em vez de só o contador.
   showRoomCreated(code: string, link: string): void {
     this.subtitleEl.textContent = t('matchmaking.online.roomWaiting', { code });
     this.root.classList.add('screen--visible');
@@ -172,6 +181,7 @@ export class MatchmakingScreen {
     this.stopTimers();
     this.root.classList.remove('screen--visible');
     this.roomInfoEl.hidden = true;
+    this.startNowButton.hidden = true;
     hideAdSlot('loading-hero');
   }
 

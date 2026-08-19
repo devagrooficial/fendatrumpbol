@@ -3,8 +3,13 @@
 // (decisões 1 e 2 da seção 13 da spec — pré-requisito pro multiplayer da
 // entrega 2). `events` é efêmero (não faz parte do estado persistido), só
 // pra UI/áudio/replay reagirem sem comparar dois estados.
+//
+// Generalizado pra N jogadores por time (1v1, 2v2, ...) — em vez de p1/p2
+// fixos, itera sobre `Object.keys(state.players)`. Colisão jogador-jogador
+// é par-a-par entre TODO mundo em campo, incluindo companheiros de time
+// (fisicamente faz sentido poder esbarrar no seu próprio parceiro).
 
-import type { Ball, Command, GameState, MatchEvent, Player, PlayerId } from './types';
+import type { Ball, Command, GameState, MatchEvent, Player, PlayerId, TeamId } from './types';
 import { MATCH, PHYS } from './constants';
 import {
   resolveCircleCollision,
@@ -15,6 +20,8 @@ import {
   stepPlayerMovement,
 } from './physics';
 import { checkGoal, createKickoffFormation, stepAntiStall } from './rules';
+
+const NEUTRAL_COMMAND: Command = { tick: 0, move: { x: 0, y: 0 }, kickHeld: false, dash: false, boost: false };
 
 function resolvePlayerBall(player: Player, ball: Ball): { player: Player; ball: Ball } {
   const result = resolveCircleCollision(
@@ -34,28 +41,28 @@ function resolvePlayerBall(player: Player, ball: Ball): { player: Player; ball: 
   };
 }
 
-function resolvePlayerPlayer(p1: Player, p2: Player): { p1: Player; p2: Player; collided: boolean } {
+function resolvePlayerPlayer(a: Player, b: Player): { a: Player; b: Player; collided: boolean } {
   const result = resolveCircleCollision(
-    { pos: p1.pos, vel: p1.vel, radius: p1.radius, mass: PHYS.PLAYER_MASS },
-    { pos: p2.pos, vel: p2.vel, radius: p2.radius, mass: PHYS.PLAYER_MASS },
+    { pos: a.pos, vel: a.vel, radius: a.radius, mass: PHYS.PLAYER_MASS },
+    { pos: b.pos, vel: b.vel, radius: b.radius, mass: PHYS.PLAYER_MASS },
     PHYS.PLAYER_RESTITUTION,
   );
 
-  let nextP1: Player = { ...p1, pos: result.a.pos, vel: result.a.vel };
-  let nextP2: Player = { ...p2, pos: result.b.pos, vel: result.b.vel };
+  let nextA: Player = { ...a, pos: result.a.pos, vel: result.a.vel };
+  let nextB: Player = { ...b, pos: result.b.pos, vel: result.b.vel };
 
   // Dash atropela: quem está com dashTimer ativo atordoa o outro no contato.
   // Simplificação conhecida do M2: reaplica o stun a cada tick de overlap
   // (ver docs/NOTES.md) — polimento pendente pro M9, não bloqueia o resto.
   if (result.collided) {
-    if (p1.dashTimer > 0 && p2.dashTimer <= 0) {
-      nextP2 = { ...nextP2, stunTimer: PHYS.DASH_STUN_ON_HIT };
-    } else if (p2.dashTimer > 0 && p1.dashTimer <= 0) {
-      nextP1 = { ...nextP1, stunTimer: PHYS.DASH_STUN_ON_HIT };
+    if (a.dashTimer > 0 && b.dashTimer <= 0) {
+      nextB = { ...nextB, stunTimer: PHYS.DASH_STUN_ON_HIT };
+    } else if (b.dashTimer > 0 && a.dashTimer <= 0) {
+      nextA = { ...nextA, stunTimer: PHYS.DASH_STUN_ON_HIT };
     }
   }
 
-  return { p1: nextP1, p2: nextP2, collided: result.collided };
+  return { a: nextA, b: nextB, collided: result.collided };
 }
 
 function applyWallBounce<T extends { pos: Player['pos']; vel: Player['vel']; radius: number }>(
@@ -72,81 +79,82 @@ function stepPlaying(
   dt: number,
 ): { state: GameState; events: MatchEvent[] } {
   const events: MatchEvent[] = [];
+  const playerIds = Object.keys(state.players) as PlayerId[];
 
-  let p1 = state.players.p1;
-  let p2 = state.players.p2;
+  let players: Record<PlayerId, Player> = {};
   let ball = state.ball;
   const prevBallPos = ball.pos;
 
-  if (commands.p1.dash && p1.dashCooldown <= 0 && p1.stunTimer <= 0) events.push({ type: 'dash', playerId: 'p1' });
-  p1 = stepDash(p1, commands.p1.dash);
-  p1 = stepPlayerMovement(p1, commands.p1.move, commands.p1.boost, dt);
-  {
-    const kickResult = stepKick(p1, ball, commands.p1.kickHeld, dt);
-    p1 = kickResult.player;
-    ball = kickResult.ball;
-    if (kickResult.kicked) {
-      events.push({
-        type: 'kick',
-        playerId: 'p1',
-        pos: ball.pos,
-        dir: { x: Math.cos(p1.facing), y: Math.sin(p1.facing) },
-        charge: kickResult.chargeUsed,
-      });
-    }
-  }
+  // 1) Dash/movimento/chute — por jogador, sem interação entre eles ainda.
+  for (const id of playerIds) {
+    let p = state.players[id]!; // id veio de Object.keys(state.players) — sempre existe
+    const cmd = commands[id] ?? NEUTRAL_COMMAND;
 
-  if (commands.p2.dash && p2.dashCooldown <= 0 && p2.stunTimer <= 0) events.push({ type: 'dash', playerId: 'p2' });
-  p2 = stepDash(p2, commands.p2.dash);
-  p2 = stepPlayerMovement(p2, commands.p2.move, commands.p2.boost, dt);
-  {
-    const kickResult = stepKick(p2, ball, commands.p2.kickHeld, dt);
-    p2 = kickResult.player;
+    if (cmd.dash && p.dashCooldown <= 0 && p.stunTimer <= 0) events.push({ type: 'dash', playerId: id });
+    p = stepDash(p, cmd.dash);
+    p = stepPlayerMovement(p, cmd.move, cmd.boost, dt);
+
+    const kickResult = stepKick(p, ball, cmd.kickHeld, dt);
+    p = kickResult.player;
     ball = kickResult.ball;
     if (kickResult.kicked) {
       events.push({
         type: 'kick',
-        playerId: 'p2',
+        playerId: id,
         pos: ball.pos,
-        dir: { x: Math.cos(p2.facing), y: Math.sin(p2.facing) },
+        dir: { x: Math.cos(p.facing), y: Math.sin(p.facing) },
         charge: kickResult.chargeUsed,
       });
     }
+
+    players[id] = p;
   }
 
   ball = stepBallMovement(ball, dt);
 
-  {
-    const result = resolvePlayerPlayer(p1, p2);
-    p1 = result.p1;
-    p2 = result.p2;
-    if (result.collided) events.push({ type: 'playerCollision' });
+  // 2) Colisão jogador-jogador — todos os pares (inclui companheiros de time).
+  for (let i = 0; i < playerIds.length; i++) {
+    for (let j = i + 1; j < playerIds.length; j++) {
+      const idA = playerIds[i]!;
+      const idB = playerIds[j]!;
+      const result = resolvePlayerPlayer(players[idA]!, players[idB]!);
+      players[idA] = result.a;
+      players[idB] = result.b;
+      if (result.collided) events.push({ type: 'playerCollision' });
+    }
   }
-  ({ player: p1, ball } = resolvePlayerBall(p1, ball));
-  ({ player: p2, ball } = resolvePlayerBall(p2, ball));
 
-  p1 = applyWallBounce(p1, PHYS.PLAYER_RESTITUTION).entity;
-  p2 = applyWallBounce(p2, PHYS.PLAYER_RESTITUTION).entity;
+  // 3) Colisão jogador-bola.
+  for (const id of playerIds) {
+    const result = resolvePlayerBall(players[id]!, ball);
+    players[id] = result.player;
+    ball = result.ball;
+  }
+
+  // 4) Paredes.
+  for (const id of playerIds) {
+    players[id] = applyWallBounce(players[id]!, PHYS.PLAYER_RESTITUTION).entity;
+  }
   {
     const wall = applyWallBounce(ball, PHYS.BALL_WALL_RESTITUTION);
     ball = wall.entity;
     if (wall.bounced) events.push({ type: 'ballWallBounce' });
   }
 
-  ball = stepAntiStall(ball, { p1, p2 }, dt);
+  ball = stepAntiStall(ball, players, dt);
 
-  const scorer = checkGoal(prevBallPos, ball.pos, ball.radius);
+  const scoringTeam = checkGoal(prevBallPos, ball.pos, ball.radius);
 
   let { score, phase, phaseTimer, overtime, timeLeftMs, result } = state;
   phase = 'playing';
 
-  if (scorer) {
-    score = { ...score, [scorer]: score[scorer] + 1 };
+  if (scoringTeam) {
+    score = { ...score, [scoringTeam]: score[scoringTeam] + 1 };
 
-    const wonByGoals = !overtime && score[scorer] >= MATCH.GOALS_TO_WIN;
+    const wonByGoals = !overtime && score[scoringTeam] >= MATCH.GOALS_TO_WIN;
     if (overtime || wonByGoals) {
       phase = 'ended';
-      result = scorer;
+      result = scoringTeam;
     } else {
       phase = 'goal';
       phaseTimer = MATCH.GOAL_FREEZE_MS + MATCH.GOAL_REPLAY_MS;
@@ -154,7 +162,7 @@ function stepPlaying(
   } else {
     timeLeftMs = Math.max(0, timeLeftMs - dt * 1000);
     if (timeLeftMs <= 0) {
-      if (score.p1 === score.p2) {
+      if (score.teamA === score.teamB) {
         if (!overtime) {
           overtime = true;
           timeLeftMs = MATCH.OVERTIME_MS;
@@ -164,7 +172,7 @@ function stepPlaying(
         }
       } else {
         phase = 'ended';
-        result = score.p1 > score.p2 ? 'p1' : 'p2';
+        result = score.teamA > score.teamB ? 'teamA' : 'teamB';
       }
     }
   }
@@ -178,7 +186,7 @@ function stepPlaying(
       timeLeftMs,
       result,
       score,
-      players: { p1, p2 },
+      players,
       ball,
     },
     events,
@@ -214,7 +222,7 @@ export function step(
   if (state.phase === 'goal') {
     const phaseTimer = state.phaseTimer - dt * 1000;
     if (phaseTimer <= 0) {
-      const { players, ball } = createKickoffFormation();
+      const { players, ball } = createKickoffFormation(state.roster);
       events.push({ type: 'kickoffStarted' });
       return {
         state: { ...state, tick: state.tick + 1, phase: 'kickoff', phaseTimer: MATCH.KICKOFF_COUNTDOWN_MS, players, ball },
@@ -230,8 +238,9 @@ export function step(
   const after = playingResult.state;
   events.push(...playingResult.events);
 
-  if (after.score.p1 !== before.score.p1) events.push({ type: 'goal', scorer: 'p1' });
-  if (after.score.p2 !== before.score.p2) events.push({ type: 'goal', scorer: 'p2' });
+  (['teamA', 'teamB'] as TeamId[]).forEach((teamId) => {
+    if (after.score[teamId] !== before.score[teamId]) events.push({ type: 'goal', scorer: teamId });
+  });
   if (before.overtime !== after.overtime && after.overtime) events.push({ type: 'overtimeStarted' });
   if (after.phase === 'ended' && after.result) events.push({ type: 'matchEnded', result: after.result });
 

@@ -3,25 +3,26 @@ import { step } from '../core/simulation';
 import { createMatchState } from '../core/rules';
 import { createAiState, decideCommand, type AiState } from '../core/ai/brain';
 import { AI_PROFILES, type AiProfile } from '../core/ai/profiles';
-import type { GameState } from '../core/types';
+import type { GameState, TeamId } from '../core/types';
 
 const DT = 1 / 60;
+const ROSTER: Record<TeamId, ['teamA-0' | 'teamB-0']> = { teamA: ['teamA-0'], teamB: ['teamB-0'] };
 // Teto de segurança: MATCH.DURATION_MS (4min) + possível prorrogação
 // (OVERTIME_MS, 60s) + folga — evita loop infinito no teste sem cortar
 // partidas que legitimamente vão até o fim.
 const MAX_TICKS = 60 * 60 * 6;
 
-function playHeadlessMatch(profileP1: AiProfile, profileP2: AiProfile, seed: number): GameState {
-  let state = createMatchState(seed, 1500);
-  let aiP1: AiState = createAiState(seed * 2 + 1);
-  let aiP2: AiState = createAiState(seed * 2 + 2);
+function playHeadlessMatch(profileTeamA: AiProfile, profileTeamB: AiProfile, seed: number): GameState {
+  let state = createMatchState(seed, 1500, ROSTER);
+  let aiA: AiState = createAiState(seed * 2 + 1);
+  let aiB: AiState = createAiState(seed * 2 + 2);
 
   for (let i = 0; i < MAX_TICKS && state.phase !== 'ended'; i++) {
-    const decisionP1 = decideCommand(state, aiP1, profileP1, 'p1', DT);
-    const decisionP2 = decideCommand(state, aiP2, profileP2, 'p2', DT);
-    aiP1 = decisionP1.aiState;
-    aiP2 = decisionP2.aiState;
-    state = step(state, { p1: decisionP1.command, p2: decisionP2.command }, DT).state;
+    const decisionA = decideCommand(state, aiA, profileTeamA, 'teamA-0', DT);
+    const decisionB = decideCommand(state, aiB, profileTeamB, 'teamB-0', DT);
+    aiA = decisionA.aiState;
+    aiB = decisionB.aiState;
+    state = step(state, { 'teamA-0': decisionA.command, 'teamB-0': decisionB.command }, DT).state;
   }
 
   return state;
@@ -29,23 +30,27 @@ function playHeadlessMatch(profileP1: AiProfile, profileP2: AiProfile, seed: num
 
 describe('IA — comportamento básico', () => {
   it('produz um Command válido em todas as fases da partida (kickoff, jogando, gol)', () => {
-    let state = createMatchState(1, 500);
+    let state = createMatchState(1, 500, ROSTER);
     let ai: AiState = createAiState(1);
 
     for (let i = 0; i < 60 * 10; i++) {
-      const { command, aiState } = decideCommand(state, ai, AI_PROFILES.profissional, 'p1', DT);
+      const { command, aiState } = decideCommand(state, ai, AI_PROFILES.profissional, 'teamA-0', DT);
       ai = aiState;
       expect(Number.isFinite(command.move.x)).toBe(true);
       expect(Number.isFinite(command.move.y)).toBe(true);
       expect(Math.hypot(command.move.x, command.move.y)).toBeLessThanOrEqual(1 + 1e-6);
-      state = step(state, { p1: command, p2: { tick: state.tick, move: { x: 0, y: 0 }, kickHeld: false, dash: false, boost: false } }, DT).state;
+      state = step(
+        state,
+        { 'teamA-0': command, 'teamB-0': { tick: state.tick, move: { x: 0, y: 0 }, kickHeld: false, dash: false, boost: false } },
+        DT,
+      ).state;
     }
   });
 
   it('não produz comando durante kickoff/gol (input é ignorado mesmo assim, mas o Command deve ser neutro)', () => {
-    const state = createMatchState(1, 1500);
+    const state = createMatchState(1, 1500, ROSTER);
     const ai = createAiState(1);
-    const { command } = decideCommand(state, ai, AI_PROFILES.lenda, 'p1', DT);
+    const { command } = decideCommand(state, ai, AI_PROFILES.lenda, 'teamA-0', DT);
     expect(command.move).toEqual({ x: 0, y: 0 });
     expect(command.kickHeld).toBe(false);
     expect(command.dash).toBe(false);
@@ -53,13 +58,17 @@ describe('IA — comportamento básico', () => {
   });
 
   it('nunca manda magnitude de movimento acima de speedFactor', () => {
-    let state = createMatchState(1, 1);
+    let state = createMatchState(1, 1, ROSTER);
     let ai = createAiState(7);
     for (let i = 0; i < 60 * 20; i++) {
-      const { command, aiState } = decideCommand(state, ai, AI_PROFILES.novato, 'p1', DT);
+      const { command, aiState } = decideCommand(state, ai, AI_PROFILES.novato, 'teamA-0', DT);
       ai = aiState;
       expect(Math.hypot(command.move.x, command.move.y)).toBeLessThanOrEqual(AI_PROFILES.novato.speedFactor + 1e-6);
-      state = step(state, { p1: command, p2: { tick: state.tick, move: { x: 0, y: 0 }, kickHeld: false, dash: false, boost: false } }, DT).state;
+      state = step(
+        state,
+        { 'teamA-0': command, 'teamB-0': { tick: state.tick, move: { x: 0, y: 0 }, kickHeld: false, dash: false, boost: false } },
+        DT,
+      ).state;
     }
   });
 });
@@ -79,8 +88,8 @@ describe('IA — balanceamento entre perfis (headless, sem render)', () => {
 
     for (let seed = 1; seed <= MATCHES; seed++) {
       const finalState = playHeadlessMatch(AI_PROFILES.novato, AI_PROFILES.lenda, seed);
-      if (finalState.result === 'p2') lendaWins++;
-      else if (finalState.result === 'p1') novatoWins++;
+      if (finalState.result === 'teamB') lendaWins++;
+      else if (finalState.result === 'teamA') novatoWins++;
       else draws++;
     }
 
@@ -101,8 +110,8 @@ describe('IA — balanceamento entre perfis (headless, sem render)', () => {
 
     for (let seed = 1; seed <= MATCHES; seed++) {
       const finalState = playHeadlessMatch(AI_PROFILES.novato, AI_PROFILES.profissional, seed + 1000);
-      if (finalState.result === 'p2') proWins++;
-      else if (finalState.result === 'p1') novatoWins++;
+      if (finalState.result === 'teamB') proWins++;
+      else if (finalState.result === 'teamA') novatoWins++;
     }
 
     // eslint-disable-next-line no-console

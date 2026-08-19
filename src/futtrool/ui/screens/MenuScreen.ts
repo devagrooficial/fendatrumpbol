@@ -18,8 +18,8 @@ export class MenuScreen {
 
   constructor(
     onPlay: () => void,
-    onPlayOnline: () => void,
-    onInviteFriend: () => void,
+    onPlayOnline: (teamSize: number) => void,
+    onInviteFriend: (teamSize: number) => void,
     onReplays: () => void,
     onNicknameSaved: (name: string) => void,
   ) {
@@ -35,8 +35,12 @@ export class MenuScreen {
         </div>
         <button type="button" class="screen__button" data-play>${t('menu.play')}</button>
         <div class="screen__button-row">
-          <button type="button" class="screen__button screen__button--secondary" data-play-online>${t('menu.playOnline')}</button>
-          <button type="button" class="screen__button screen__button--secondary" data-invite-friend>${t('menu.inviteFriend')}</button>
+          <button type="button" class="screen__button screen__button--secondary" data-play-online="1">${t('menu.playOnline1v1')}</button>
+          <button type="button" class="screen__button screen__button--secondary" data-invite-friend="1">${t('menu.inviteFriend1v1')}</button>
+        </div>
+        <div class="screen__button-row">
+          <button type="button" class="screen__button screen__button--secondary" data-play-online="2">${t('menu.playOnline2v2')}</button>
+          <button type="button" class="screen__button screen__button--secondary" data-invite-friend="2">${t('menu.inviteFriend2v2')}</button>
         </div>
         <div class="screen__button-row">
           <button type="button" class="screen__button screen__button--secondary" data-inventory>${t('menu.inventory')}</button>
@@ -70,8 +74,8 @@ export class MenuScreen {
     const levelEl = this.root.querySelector<HTMLSpanElement>('[data-level]');
     const coinsEl = this.root.querySelector<HTMLSpanElement>('[data-coins]');
     const playButton = this.root.querySelector<HTMLButtonElement>('[data-play]');
-    const playOnlineButton = this.root.querySelector<HTMLButtonElement>('[data-play-online]');
-    const inviteFriendButton = this.root.querySelector<HTMLButtonElement>('[data-invite-friend]');
+    const playOnlineButtons = this.root.querySelectorAll<HTMLButtonElement>('[data-play-online]');
+    const inviteFriendButtons = this.root.querySelectorAll<HTMLButtonElement>('[data-invite-friend]');
     const inventoryButton = this.root.querySelector<HTMLButtonElement>('[data-inventory]');
     const shopButton = this.root.querySelector<HTMLButtonElement>('[data-shop]');
     const replaysButton = this.root.querySelector<HTMLButtonElement>('[data-replays]');
@@ -85,8 +89,8 @@ export class MenuScreen {
       !levelEl ||
       !coinsEl ||
       !playButton ||
-      !playOnlineButton ||
-      !inviteFriendButton ||
+      playOnlineButtons.length !== 2 ||
+      inviteFriendButtons.length !== 2 ||
       !inventoryButton ||
       !shopButton ||
       !replaysButton ||
@@ -108,14 +112,20 @@ export class MenuScreen {
     this.nicknameSaveButton = nicknameSaveButton;
     this.nicknameStatus = nicknameStatus;
 
-    playOnlineButton.addEventListener('click', () => {
-      Audio.click();
-      onPlayOnline();
+    playOnlineButtons.forEach((button) => {
+      const teamSize = Number(button.dataset.playOnline);
+      button.addEventListener('click', () => {
+        Audio.click();
+        onPlayOnline(teamSize);
+      });
     });
 
-    inviteFriendButton.addEventListener('click', () => {
-      Audio.click();
-      onInviteFriend();
+    inviteFriendButtons.forEach((button) => {
+      const teamSize = Number(button.dataset.inviteFriend);
+      button.addEventListener('click', () => {
+        Audio.click();
+        onInviteFriend(teamSize);
+      });
     });
 
     playButton.addEventListener('click', () => {

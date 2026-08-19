@@ -8,14 +8,15 @@
 // raciocínio da seção 8 sobre "salvar seed + comandos" seria uma
 // alternativa mais barata, citada lá como otimização futura).
 
-import type { Ball, GameState, Player, PlayerId, Vec2 } from '../core/types';
+import type { Ball, GameState, Player, PlayerId, TeamId, Vec2 } from '../core/types';
+import { teamOf } from '../core/types';
 import { FIXED_TIMESTEP_S, PHYS, REPLAY } from '../core/constants';
 
 export type ReplaySnapshot = {
   tick: number;
   ball: { pos: Vec2; vel: Vec2 };
   players: Record<PlayerId, { pos: Vec2; vel: Vec2; facing: number; stunned: boolean }>;
-  score: Record<PlayerId, number>;
+  score: Record<TeamId, number>;
 };
 
 function toPlayerSnapshot(player: Player): ReplaySnapshot['players'][PlayerId] {
@@ -23,10 +24,14 @@ function toPlayerSnapshot(player: Player): ReplaySnapshot['players'][PlayerId] {
 }
 
 export function snapshotFromState(state: GameState): ReplaySnapshot {
+  const players = {} as ReplaySnapshot['players'];
+  for (const id of Object.keys(state.players) as PlayerId[]) {
+    players[id] = toPlayerSnapshot(state.players[id]!);
+  }
   return {
     tick: state.tick,
     ball: { pos: state.ball.pos, vel: state.ball.vel },
-    players: { p1: toPlayerSnapshot(state.players.p1), p2: toPlayerSnapshot(state.players.p2) },
+    players,
     score: state.score,
   };
 }
@@ -68,9 +73,10 @@ export function ballFromSnapshot(snapshot: ReplaySnapshot): Ball {
 // stun) importam pra reprodução visual; o resto (chute, dash, cooldowns)
 // não faz sentido fora de uma simulação rodando de verdade.
 export function playerFromSnapshot(id: PlayerId, snapshot: ReplaySnapshot): Player {
-  const p = snapshot.players[id];
+  const p = snapshot.players[id]!; // id sempre vem do roster gravado nesse próprio snapshot
   return {
     id,
+    teamId: teamOf(id),
     pos: p.pos,
     vel: p.vel,
     radius: PHYS.PLAYER_RADIUS,

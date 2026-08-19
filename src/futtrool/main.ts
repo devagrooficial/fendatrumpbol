@@ -16,7 +16,8 @@ import { Fx } from './render/fx';
 import { FIXED_TIMESTEP_S, MATCH, REPLAY } from './core/constants';
 import { step } from './core/simulation';
 import { createMatchState } from './core/rules';
-import type { Command, GameState, MatchEvent, PlayerId } from './core/types';
+import type { Command, GameState, MatchEvent, PlayerId, TeamId } from './core/types';
+import { teamOf } from './core/types';
 import { OnlineClient } from './net/onlineClient';
 import { KeyboardInput } from './input/keyboard';
 import { TouchInput } from './input/joystick';
@@ -83,7 +84,7 @@ const touch = hasTouch ? new TouchInput(canvas, () => ({ w: window.innerWidth, h
 // cada pessoa está no seu próprio teclado, então não faz sentido usar o
 // esquema de p2 (setas) só por causa de um detalhe interno da simulação.
 function getP1Command(tick: number): Command {
-  const fromKeyboard = keyboard.getCommand('p1', tick);
+  const fromKeyboard = keyboard.getCommand('primary', tick);
   if (!touch) return fromKeyboard;
 
   const fromTouch = touch.getCommand(tick);
@@ -116,7 +117,11 @@ let chosenDifficulty: AiDifficulty = 'profissional';
 // que o servidor mandou de volta. localPlayerId é 'p1' fora do modo online
 // (humano sempre joga de p1 contra a IA).
 let onlineMode = false;
-let localPlayerId: PlayerId = 'p1';
+// Time/roster do 1v1 contra a IA — sempre igual, o humano é sempre
+// 'teamA-0'. Times online vêm de fora (o servidor decide o roster real, ver
+// startOnlineMatch) — isso aqui só serve pro modo offline.
+const SOLO_ROSTER: Record<TeamId, PlayerId[]> = { teamA: ['teamA-0'], teamB: ['teamB-0'] };
+let localPlayerId: PlayerId = 'teamA-0';
 let onlineClient: OnlineClient | null = null;
 // Eventos ('goal', 'kick' etc.) que chegaram do servidor desde o último
 // frame local — updateMatch() drena essa fila a cada chamada, do mesmo
@@ -157,7 +162,7 @@ const replayPlayer = new ReplayPlayer();
 // mostrando o estado ao vivo parado, não o replay tocando.
 let inGoalReplayWindow = false;
 
-let state: GameState = createMatchState(1, MATCH.KICKOFF_COUNTDOWN_MS);
+let state: GameState = createMatchState(1, MATCH.KICKOFF_COUNTDOWN_MS, SOLO_ROSTER);
 let aiState: AiState = createAiState(Date.now());
 let prevPhase = state.phase;
 
@@ -207,10 +212,10 @@ function resetMatchVisuals(): void {
 }
 
 function startMatch(): void {
-  state = createMatchState(Date.now(), MATCH.KICKOFF_COUNTDOWN_MS);
+  state = createMatchState(Date.now(), MATCH.KICKOFF_COUNTDOWN_MS, SOLO_ROSTER);
   aiState = createAiState(Date.now());
   onlineMode = false;
-  localPlayerId = 'p1';
+  localPlayerId = 'teamA-0';
   resetMatchVisuals();
 }
 
@@ -236,10 +241,17 @@ function startOnlineMatch(initialState: GameState, playerId: PlayerId): void {
 // OnlineClientCallbacks.onOpen) — fila aleatória, criar sala privada pra
 // convidar alguém específico, ou entrar numa sala existente via link/código
 // (ver server/src/index.ts e protocol.ts).
-type OnlineJoinMode = { kind: 'quickMatch' } | { kind: 'createRoom' } | { kind: 'joinRoom'; code: string };
+type OnlineJoinMode =
+  | { kind: 'quickMatch'; teamSize: number }
+  | { kind: 'createRoom'; teamSize: number }
+  | { kind: 'joinRoom'; code: string };
 
 function buildRoomLink(code: string): string {
   return `${window.location.origin}${window.location.pathname}?room=${code}`;
+}
+
+function onMatchmakingStartNow(): void {
+  onlineClient?.requestStartNow();
 }
 
 function connectOnline(mode: OnlineJoinMode): void {
@@ -254,8 +266,8 @@ function connectOnline(mode: OnlineJoinMode): void {
 
   client.connect({
     onOpen: () => {
-      if (mode.kind === 'quickMatch') client.requestQuickMatch();
-      else if (mode.kind === 'createRoom') client.requestCreateRoom();
+      if (mode.kind === 'quickMatch') client.requestQuickMatch(mode.teamSize);
+      else if (mode.kind === 'createRoom') client.requestCreateRoom(mode.teamSize);
       else client.requestJoinRoom(mode.code);
     },
     onAssigned: (playerId) => {
@@ -268,8 +280,8 @@ function connectOnline(mode: OnlineJoinMode): void {
       onlineClient = null;
       goToMenuWithNotice(t('matchmaking.online.roomNotFound'));
     },
-    onQueueStatus: (waitingCount) => {
-      matchmakingScreen.setQueueStatus(waitingCount);
+    onLobbyUpdate: (teamSize, filled, capacity) => {
+      matchmakingScreen.setLobbyStatus(teamSize, filled, capacity);
     },
     onState: (newState, events) => {
       if (!matchStarted) {
@@ -277,7 +289,7 @@ function connectOnline(mode: OnlineJoinMode): void {
         // Servidor sempre manda 'assigned' antes do primeiro 'state' (ver
         // server/src/index.ts) — na prática nunca é null aqui, o fallback é
         // só pra não deixar o tipo escapar como PlayerId | null.
-        startOnlineMatch(newState, assignedPlayerId ?? 'p1');
+        startOnlineMatch(newState, assignedPlayerId ?? 'teamA-0');
         return;
       }
       state = newState;
@@ -297,12 +309,12 @@ function connectOnline(mode: OnlineJoinMode): void {
   });
 }
 
-function goToOnlineMatchmaking(): void {
-  connectOnline({ kind: 'quickMatch' });
+function goToOnlineMatchmaking(teamSize: number): void {
+  connectOnline({ kind: 'quickMatch', teamSize });
 }
 
-function goToCreateOnlineRoom(): void {
-  connectOnline({ kind: 'createRoom' });
+function goToCreateOnlineRoom(teamSize: number): void {
+  connectOnline({ kind: 'createRoom', teamSize });
 }
 
 function joinOnlineRoom(code: string): void {
@@ -318,8 +330,15 @@ function endMatchFlow(): void {
   // a tela de fim de jogo ficar parada.
   fx.reset();
 
-  const outcome: MatchOutcome = state.result === 'p1' ? 'win' : state.result === 'p2' ? 'loss' : 'draw';
-  const reward = calculateMatchReward(outcome, state.score.p1, progression.winStreak);
+  // Sempre do ponto de vista de quem está vendo a tela — em modo online o
+  // humano local pode ter caído no teamA OU no teamB (decisão do
+  // servidor), nunca dá pra assumir "eu sou teamA" (bug real que existia
+  // aqui antes: resultado do online sempre lido como se o humano fosse
+  // p1/teamA, então metade das vitórias de verdade apareciam como derrota).
+  const myTeam = teamOf(localPlayerId);
+  const opponentTeam: TeamId = myTeam === 'teamA' ? 'teamB' : 'teamA';
+  const outcome: MatchOutcome = state.result === myTeam ? 'win' : state.result === opponentTeam ? 'loss' : 'draw';
+  const reward = calculateMatchReward(outcome, state.score[myTeam], progression.winStreak);
   const levelAfter = applyXp(
     { level: progression.level, levelXp: progression.levelXp, xpToNextLevel: xpForLevel(progression.level) },
     reward.xp,
@@ -344,8 +363,8 @@ function endMatchFlow(): void {
   hideAllScreens();
   endGameScreen.show({
     outcome,
-    score: state.score,
-    difficultyLabel: AI_PROFILES[chosenDifficulty].label,
+    score: { myTeam: state.score[myTeam], opponentTeam: state.score[opponentTeam] },
+    opponentLabel: onlineMode ? t('endgame.opponent.online') : `IA (${AI_PROFILES[chosenDifficulty].label})`,
     reward,
     exitCoins,
     youLabel: displayName,
@@ -417,7 +436,7 @@ const menuScreen = new MenuScreen(goToDifficulty, goToOnlineMatchmaking, goToCre
   displayName = name;
 });
 const difficultyScreen = new DifficultyScreen(goToMatchmaking, goToMenu);
-const matchmakingScreen = new MatchmakingScreen(onMatchmakingCancel);
+const matchmakingScreen = new MatchmakingScreen(onMatchmakingCancel, onMatchmakingStartNow);
 const endGameScreen = new EndGameScreen(goToMenu, claimRematchBonus);
 const savedReplaysScreen = new SavedReplaysScreen(watchSavedReplay, deleteSavedReplay, goToMenu);
 const replayOverlay = new ReplayOverlay(reactToGoalReplay, saveGoalReplay, onReplayOverlaySkipOrBack);
@@ -468,13 +487,18 @@ function advanceMatchState(dt: number): MatchEvent[] {
     return pendingOnlineEvents.splice(0);
   }
 
-  const p1 = getP1Command(state.tick);
+  const myCommand = getP1Command(state.tick);
   // A IA só produz Command a partir do GameState — mesma regra de qualquer
   // jogador (seção 5 da spec: sem acesso privilegiado).
-  const aiDecision = decideCommand(state, aiState, AI_PROFILES[chosenDifficulty], 'p2', dt);
+  const botId: PlayerId = 'teamB-0';
+  const aiDecision = decideCommand(state, aiState, AI_PROFILES[chosenDifficulty], botId, dt);
   aiState = aiDecision.aiState;
 
-  const result = step(state, { p1, p2: aiDecision.command }, dt);
+  const commands = {} as Record<PlayerId, Command>;
+  commands[localPlayerId] = myCommand;
+  commands[botId] = aiDecision.command;
+
+  const result = step(state, commands, dt);
   state = result.state;
   return result.events;
 }
@@ -484,7 +508,11 @@ function updateMatch(dt: number): void {
 
   // Câmera atualizada no passo fixo (não no render) pra a suavização (lerp
   // flat, seção 11) não depender da taxa de atualização do monitor.
-  camera.follow(state.ball.pos, state.players.p1.pos, state.players.p2.pos);
+  camera.follow(
+    state.ball.pos,
+    state.players[localPlayerId]!.pos,
+    Object.values(state.players).map((p) => p.pos),
+  );
 
   if (state.phase === 'playing' || prevPhase === 'playing') {
     fx.recordBallPosition(state.ball.pos);
@@ -557,7 +585,10 @@ function updateWatchingReplay(dt: number): void {
   replayPlayer.update(dt);
   replayOverlay.setProgress(replayPlayer.progress);
   const snapshot = replayPlayer.getCurrentSnapshot();
-  if (snapshot) camera.follow(snapshot.ball.pos, snapshot.players.p1.pos, snapshot.players.p2.pos);
+  if (snapshot) {
+    const positions = Object.values(snapshot.players).map((p) => p.pos);
+    camera.follow(snapshot.ball.pos, positions[0] ?? snapshot.ball.pos, positions);
+  }
 }
 
 function update(dt: number): void {
@@ -579,6 +610,15 @@ function renderPlayerWithBadge(player: Parameters<typeof renderPlayer>[2], color
   if (label) renderPlayerLabel(ctx, camera, player, label);
 }
 
+// Desenha TODO mundo em campo (1v1: 2 jogadores; 2v2: 4) sem rótulo — a
+// partida ao vivo nunca mostrou nome em cima de ninguém (só a tela de fim
+// de jogo e o replay de gol têm rótulo, ver renderReplaySnapshot).
+function renderAllPlayers(): void {
+  for (const player of Object.values(state.players)) {
+    renderPlayerWithBadge(player, player.teamId === 'teamA' ? THEME.TEAM_1 : THEME.TEAM_2);
+  }
+}
+
 function renderBallWithSkin(ball: Parameters<typeof renderBall>[2]): void {
   // ball-skin (seção 10.1): se houver criativo, substitui a textura padrão
   // da bola; sem criativo, cai pro desenho normal (com o giro do Fx —
@@ -592,12 +632,15 @@ function renderBallWithSkin(ball: Parameters<typeof renderBall>[2]): void {
 }
 
 function renderReplaySnapshot(snapshot: ReplaySnapshot): void {
-  const p1 = playerFromSnapshot('p1', snapshot);
-  const p2 = playerFromSnapshot('p2', snapshot);
   const ball = ballFromSnapshot(snapshot);
-
-  renderPlayerWithBadge(p1, THEME.TEAM_1, displayName);
-  renderPlayerWithBadge(p2, THEME.TEAM_2, `IA (${AI_PROFILES[chosenDifficulty].label})`);
+  // Só rotula "eu" (localPlayerId) — pra qualquer outro jogador (bot ou
+  // humano de verdade em partida online/2v2) não dá pra saber um nome
+  // confiável só a partir do snapshot, então fica sem rótulo.
+  for (const id of Object.keys(snapshot.players) as PlayerId[]) {
+    const player = playerFromSnapshot(id, snapshot);
+    const color = player.teamId === 'teamA' ? THEME.TEAM_1 : THEME.TEAM_2;
+    renderPlayerWithBadge(player, color, id === localPlayerId ? displayName : undefined);
+  }
   renderBallWithSkin(ball);
 }
 
@@ -623,13 +666,11 @@ function render(_alpha: number): void {
     const snapshot = replayPlayer.getCurrentSnapshot();
     if (snapshot) renderReplaySnapshot(snapshot);
     else {
-      renderPlayerWithBadge(state.players.p1, THEME.TEAM_1);
-      renderPlayerWithBadge(state.players.p2, THEME.TEAM_2);
+      renderAllPlayers();
       renderBallWithSkin(state.ball);
     }
   } else {
-    renderPlayerWithBadge(state.players.p1, THEME.TEAM_1);
-    renderPlayerWithBadge(state.players.p2, THEME.TEAM_2);
+    renderAllPlayers();
     renderBallWithSkin(state.ball);
   }
 
@@ -638,7 +679,7 @@ function render(_alpha: number): void {
   renderMatchHud(ctx, window.innerWidth, window.innerHeight, state, `IA: ${aiState.fsmState}`, camera);
 
   if (touch && appScreen === 'match' && !inGoalReplayWindow) {
-    const localPlayer = state.players[localPlayerId];
+    const localPlayer = state.players[localPlayerId]!;
     renderTouchControls(ctx, touch.getLayout(), touch.joystickVisual, localPlayer.kickCharge, localPlayer.boostStamina);
   }
 }

@@ -7,7 +7,7 @@ function makeSnapshot(tMs: number): AiSnapshot {
     ball: { pos: { x: 0, y: 0 }, vel: { x: 0, y: 0 } },
     self: { pos: { x: 0, y: 0 }, vel: { x: 0, y: 0 }, facing: 0 },
     opponent: { pos: { x: 0, y: 0 }, vel: { x: 0, y: 0 } },
-    score: { p1: 0, p2: 0 },
+    score: { teamA: 0, teamB: 0 },
     timeLeftMs: 0,
   };
 }

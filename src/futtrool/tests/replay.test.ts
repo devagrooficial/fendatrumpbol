@@ -3,9 +3,12 @@ import { ReplayBuffer } from '../replay/buffer';
 import { ReplayPlayer } from '../replay/player';
 import { createMatchState } from '../core/rules';
 import { FIXED_TIMESTEP_S, REPLAY } from '../core/constants';
+import type { PlayerId, TeamId } from '../core/types';
+
+const ROSTER: Record<TeamId, PlayerId[]> = { teamA: ['teamA-0'], teamB: ['teamB-0'] };
 
 function makeState(tick: number) {
-  const state = createMatchState(1, 0);
+  const state = createMatchState(1, 0, ROSTER);
   return { ...state, tick, phase: 'playing' as const };
 }
 

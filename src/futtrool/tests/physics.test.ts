@@ -12,7 +12,8 @@ import type { Ball, Player } from '../core/types';
 
 function makePlayer(overrides: Partial<Player> = {}): Player {
   return {
-    id: 'p1',
+    id: 'teamA-0',
+    teamId: 'teamA',
     pos: { x: 0, y: 0 },
     vel: { x: 0, y: 0 },
     radius: PHYS.PLAYER_RADIUS,
@@ -184,7 +185,7 @@ describe('chute', () => {
 
     const speed = Math.hypot(ball.vel.x, ball.vel.y);
     expect(speed).toBeCloseTo(PHYS.KICK_MAX_IMPULSE, 1);
-    expect(ball.lastTouchedBy).toBe('p1');
+    expect(ball.lastTouchedBy).toBe('teamA-0');
   });
 
   it('toque curto aplica bem menos impulso que a carga máxima', () => {

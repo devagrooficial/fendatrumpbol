@@ -4,15 +4,18 @@
 // disso, prevê o ponto de interceptação da bola simulando sua trajetória
 // (com arrasto) por `predictionHorizon` segundos.
 
-import type { PlayerId, Vec2 } from '../types';
+import type { TeamId, Vec2 } from '../types';
 import { PHYS } from '../constants';
 
 export type AiSnapshot = {
   tMs: number;
   ball: { pos: Vec2; vel: Vec2 };
   self: { pos: Vec2; vel: Vec2; facing: number };
+  // Adversário mais próximo (não necessariamente o único — em 2v2 é quem
+  // decide mirar/marcar; ver decideCommand em brain.ts) — a IA continua sem
+  // noção de "time todo", só do inimigo mais relevante agora.
   opponent: { pos: Vec2; vel: Vec2 };
-  score: Record<PlayerId, number>;
+  score: Record<TeamId, number>;
   timeLeftMs: number;
 };
 

@@ -3,7 +3,7 @@
 // eventos que o servidor manda de volta. Zero física/regras aqui: quem
 // decide o que acontece é sempre o servidor (ver server/src/index.ts).
 
-import type { Command, GameState, MatchEvent, PlayerId } from '../core/types';
+import type { Command, GameState, MatchEvent, PlayerId, TeamId } from '../core/types';
 import type { ClientMessage, ServerMessage } from './protocol';
 
 // wss:// em produção (o site já é HTTPS, então ws:// puro seria bloqueado
@@ -23,7 +23,7 @@ export type OnlineClientCallbacks = {
   onAssigned: (playerId: PlayerId) => void;
   onRoomCreated: (code: string) => void;
   onRoomNotFound: () => void;
-  onQueueStatus: (waitingCount: number) => void;
+  onLobbyUpdate: (teamSize: number, filled: Record<TeamId, number>, capacity: number) => void;
   onState: (state: GameState, events: MatchEvent[]) => void;
   onOpponentLeft: () => void;
   onClose: () => void;
@@ -48,7 +48,7 @@ export class OnlineClient {
       if (message.type === 'assigned') callbacks.onAssigned(message.playerId);
       else if (message.type === 'roomCreated') callbacks.onRoomCreated(message.code);
       else if (message.type === 'roomNotFound') callbacks.onRoomNotFound();
-      else if (message.type === 'queueStatus') callbacks.onQueueStatus(message.waitingCount);
+      else if (message.type === 'lobbyUpdate') callbacks.onLobbyUpdate(message.teamSize, message.filled, message.capacity);
       else if (message.type === 'state') callbacks.onState(message.state, message.events);
       else if (message.type === 'opponentLeft') callbacks.onOpponentLeft();
     });
@@ -61,16 +61,20 @@ export class OnlineClient {
     this.ws.send(JSON.stringify(message));
   }
 
-  requestQuickMatch(): void {
-    this.sendRaw({ type: 'quickMatch' });
+  requestQuickMatch(teamSize: number): void {
+    this.sendRaw({ type: 'quickMatch', teamSize });
   }
 
-  requestCreateRoom(): void {
-    this.sendRaw({ type: 'createRoom' });
+  requestCreateRoom(teamSize: number): void {
+    this.sendRaw({ type: 'createRoom', teamSize });
   }
 
   requestJoinRoom(code: string): void {
     this.sendRaw({ type: 'joinRoom', code });
+  }
+
+  requestStartNow(): void {
+    this.sendRaw({ type: 'startNow' });
   }
 
   sendCommand(command: Command): void {

@@ -1,9 +1,14 @@
-// Controle por teclado dos dois jogadores no mesmo teclado — só pra M2/M3,
-// pra testar a sensação da física antes do M5 (joystick touch + botões).
-// P1: WASD / Espaço (chute) / Shift esquerdo (dash) / Ctrl esquerdo (turbo).
-// P2: setas / Enter (chute) / Ctrl direito (dash) / Shift direito (turbo).
+// Controle por teclado — dois esquemas fixos (WASD e setas), independentes
+// de qual PlayerId/time a simulação atribuir a essa pessoa (ver
+// getP1Command em main.ts: cada humano sempre lê o PRÓPRIO teclado com o
+// esquema "primary" (WASD), esteja em teamA ou teamB, 1v1 ou 2v2 — "P1"
+// aqui só nomeia o esquema de teclas, não um jogador da partida).
+// Primary: WASD / Espaço (chute) / Shift esquerdo (dash) / Ctrl esquerdo (turbo).
+// Secondary: setas / Enter (chute) / Ctrl direito (dash) / Shift direito (turbo) — reservado pra um eventual modo local 2 jogadores no mesmo teclado, hoje sem uso.
 
-import type { Command, PlayerId, Vec2 } from '../core/types';
+import type { Command, Vec2 } from '../core/types';
+
+export type LocalSlot = 'primary' | 'secondary';
 
 type Binding = {
   up: string;
@@ -15,7 +20,7 @@ type Binding = {
   boost: string;
 };
 
-const P1_BINDING: Binding = {
+const PRIMARY_BINDING: Binding = {
   up: 'KeyW',
   down: 'KeyS',
   left: 'KeyA',
@@ -25,7 +30,7 @@ const P1_BINDING: Binding = {
   boost: 'ControlLeft',
 };
 
-const P2_BINDING: Binding = {
+const SECONDARY_BINDING: Binding = {
   up: 'ArrowUp',
   down: 'ArrowDown',
   left: 'ArrowLeft',
@@ -36,12 +41,12 @@ const P2_BINDING: Binding = {
 };
 
 const ALL_CODES = new Set(
-  [P1_BINDING, P2_BINDING].flatMap((b) => [b.up, b.down, b.left, b.right, b.kick, b.dash, b.boost]),
+  [PRIMARY_BINDING, SECONDARY_BINDING].flatMap((b) => [b.up, b.down, b.left, b.right, b.kick, b.dash, b.boost]),
 );
 
 export class KeyboardInput {
   private readonly pressed = new Set<string>();
-  private readonly dashPending = new Set<PlayerId>();
+  private readonly dashPending = new Set<LocalSlot>();
 
   constructor() {
     window.addEventListener('keydown', this.onKeyDown);
@@ -69,8 +74,8 @@ export class KeyboardInput {
     if (this.isTypingInField()) return;
 
     if (!this.pressed.has(e.code)) {
-      if (e.code === P1_BINDING.dash) this.dashPending.add('p1');
-      if (e.code === P2_BINDING.dash) this.dashPending.add('p2');
+      if (e.code === PRIMARY_BINDING.dash) this.dashPending.add('primary');
+      if (e.code === SECONDARY_BINDING.dash) this.dashPending.add('secondary');
     }
     this.pressed.add(e.code);
     if (ALL_CODES.has(e.code)) e.preventDefault();
@@ -93,8 +98,8 @@ export class KeyboardInput {
     if (document.hidden) this.resetInput();
   };
 
-  getCommand(id: PlayerId, tick: number): Command {
-    const binding = id === 'p1' ? P1_BINDING : P2_BINDING;
+  getCommand(id: LocalSlot, tick: number): Command {
+    const binding = id === 'primary' ? PRIMARY_BINDING : SECONDARY_BINDING;
 
     const move: Vec2 = { x: 0, y: 0 };
     if (this.pressed.has(binding.left)) move.x -= 1;

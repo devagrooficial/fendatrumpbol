@@ -4,10 +4,20 @@
 
 export type Vec2 = { x: number; y: number };
 
-export type PlayerId = 'p1' | 'p2';
+// Times de tamanho fixo por partida (1 jogador em cada = 1v1, 2 = 2v2 — ver
+// GameState.roster) — teamA sempre defende o lado esquerdo do campo, teamB
+// o direito (mesma convenção do antigo p1/p2, generalizada pra N jogadores
+// por lado; 3v3 é só aumentar o roster, sem mexer em mais nada aqui).
+export type TeamId = 'teamA' | 'teamB';
+export type PlayerId = `${TeamId}-${number}`;
+
+export function teamOf(playerId: PlayerId): TeamId {
+  return playerId.startsWith('teamA') ? 'teamA' : 'teamB';
+}
 
 export type Player = {
   id: PlayerId;
+  teamId: TeamId;
   pos: Vec2;
   vel: Vec2;
   radius: number;
@@ -37,7 +47,7 @@ export type Ball = {
 
 export type MatchPhase = 'kickoff' | 'playing' | 'goal' | 'ended';
 
-export type MatchResult = PlayerId | 'draw';
+export type MatchResult = TeamId | 'draw';
 
 export type GameState = {
   tick: number;
@@ -51,7 +61,12 @@ export type GameState = {
   // modo conta os 60s de OVERTIME_MS, e qualquer gol encerra a partida.
   overtime: boolean;
   result: MatchResult | null;
-  score: Record<PlayerId, number>;
+  score: Record<TeamId, number>;
+  // Quem joga em cada time nessa partida (1 elemento por time = 1v1, 2 =
+  // 2v2) — precisa estar no próprio estado (não só derivável de
+  // `players`) porque a formação de kickoff (rules.ts) precisa saber quem
+  // reposicionar sem depender de ordem de iteração de objeto.
+  roster: Record<TeamId, PlayerId[]>;
   players: Record<PlayerId, Player>;
   ball: Ball;
   rngState: number;
@@ -61,7 +76,7 @@ export type GameState = {
 // sem precisar comparar dois GameState pra descobrir o que aconteceu. Não
 // fazem parte do estado persistido — são efêmeros, devolvidos ao lado dele.
 export type MatchEvent =
-  | { type: 'goal'; scorer: PlayerId }
+  | { type: 'goal'; scorer: TeamId }
   | { type: 'kickoffStarted' }
   | { type: 'kickoffEnded' }
   | { type: 'overtimeStarted' }

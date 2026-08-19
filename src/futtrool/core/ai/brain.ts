@@ -10,7 +10,8 @@
 // contatos triviais por causa do próprio atraso que deveria só afetar
 // leitura estratégica, não a coordenação motor-mão do próprio corpo.
 
-import type { Command, GameState, PlayerId, Vec2 } from '../types';
+import type { Command, GameState, Player, PlayerId, TeamId, Vec2 } from '../types';
+import { teamOf } from '../types';
 import { FIELD, PHYS } from '../constants';
 import { createRngState, nextRandom, nextRange, type RngState } from '../rng';
 import { add, length, normalize, scale, sub } from '../vec2';
@@ -222,6 +223,28 @@ function planKick(
   };
 }
 
+// Adversário mais próximo do jogador `self` (qualquer um do time contrário
+// — ver comentário de AiSnapshot.opponent) — em 1v1 é sempre o único
+// jogador do outro time, então o comportamento pra quem já jogava contra a
+// IA não muda em nada.
+function findNearestOpponent(world: GameState, self: Player): Player {
+  const myTeam = self.teamId;
+  const opponentTeam: TeamId = myTeam === 'teamA' ? 'teamB' : 'teamA';
+  const opponentIds = world.roster[opponentTeam];
+
+  let nearest = world.players[opponentIds[0]!]!; // roster de cada time nunca é vazio
+  let nearestDist = length(sub(nearest.pos, self.pos));
+  for (let i = 1; i < opponentIds.length; i++) {
+    const candidate = world.players[opponentIds[i]!]!;
+    const dist = length(sub(candidate.pos, self.pos));
+    if (dist < nearestDist) {
+      nearest = candidate;
+      nearestDist = dist;
+    }
+  }
+  return nearest;
+}
+
 export function decideCommand(
   world: GameState,
   aiState: AiState,
@@ -229,12 +252,11 @@ export function decideCommand(
   playerId: PlayerId,
   dt: number,
 ): { command: Command; aiState: AiState } {
-  const opponentId: PlayerId = playerId === 'p1' ? 'p2' : 'p1';
-  const mySide: 'left' | 'right' = playerId === 'p1' ? 'left' : 'right';
+  const self = world.players[playerId]!; // playerId sempre vem do roster da partida
+  const mySide: 'left' | 'right' = teamOf(playerId) === 'teamA' ? 'left' : 'right';
   const nowMs = world.tick * dt * 1000;
 
-  const self = world.players[playerId];
-  const opponent = world.players[opponentId];
+  const opponent = findNearestOpponent(world, self);
 
   const snapshot: AiSnapshot = {
     tMs: nowMs,

@@ -68,7 +68,7 @@ export class SavedReplaysScreen {
               (replay) => `
                 <div class="saved-replay-row" data-id="${replay.id}">
                   <div class="saved-replay-row__info">
-                    <span class="saved-replay-row__score">${t('replays.score', { p1: replay.score.p1, p2: replay.score.p2 })}</span>
+                    <span class="saved-replay-row__score">${t('replays.score', { p1: replay.score.teamA, p2: replay.score.teamB })}</span>
                     <span class="saved-replay-row__date">${formatDate(replay.savedAt)}</span>
                   </div>
                   <div class="saved-replay-row__actions">

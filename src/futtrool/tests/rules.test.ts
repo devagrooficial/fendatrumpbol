@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { checkGoal, createKickoffFormation, createMatchState, stepAntiStall } from '../core/rules';
 import { step } from '../core/simulation';
 import { FIELD, MATCH, PHYS, STALL } from '../core/constants';
-import type { Ball, Command, GameState, Player, PlayerId } from '../core/types';
+import type { Ball, Command, GameState, Player, PlayerId, TeamId } from '../core/types';
 
 const NO_MOVE: Command = { tick: 0, move: { x: 0, y: 0 }, kickHeld: false, dash: false, boost: false };
 const DT = 1 / 60;
+const ROSTER: Record<TeamId, PlayerId[]> = { teamA: ['teamA-0'], teamB: ['teamB-0'] };
 
 function commands(overrides: Partial<Record<PlayerId, Command>> = {}): Record<PlayerId, Command> {
-  return { p1: NO_MOVE, p2: NO_MOVE, ...overrides };
+  return { 'teamA-0': NO_MOVE, 'teamB-0': NO_MOVE, ...overrides };
 }
 
 function playThroughKickoff(state: GameState): GameState {
@@ -29,13 +30,13 @@ describe('checkGoal (swept collision)', () => {
     // outro lado da linha) num tick só.
     const prev = { x: 20, y: openingY };
     const next = { x: -5, y: openingY };
-    expect(checkGoal(prev, next, PHYS.BALL_RADIUS)).toBe('p2');
+    expect(checkGoal(prev, next, PHYS.BALL_RADIUS)).toBe('teamB');
   });
 
   it('detecta gol no lado direito', () => {
     const prev = { x: FIELD.WIDTH - 20, y: openingY };
     const next = { x: FIELD.WIDTH + 5, y: openingY };
-    expect(checkGoal(prev, next, PHYS.BALL_RADIUS)).toBe('p1');
+    expect(checkGoal(prev, next, PHYS.BALL_RADIUS)).toBe('teamA');
   });
 
   it('não conta gol se cruzar fora da abertura (bola tocando a lateral, não o gol)', () => {
@@ -53,12 +54,12 @@ describe('checkGoal (swept collision)', () => {
 
 describe('kickoff', () => {
   it('bloqueia o placar/relógio e ignora comandos até o contador zerar', () => {
-    let state = createMatchState(1, 1500);
-    const posBefore = state.players.p1.pos;
+    let state = createMatchState(1, 1500, ROSTER);
+    const posBefore = state.players['teamA-0']!.pos;
 
-    const result = step(state, commands({ p1: { ...NO_MOVE, move: { x: 1, y: 0 } } }), DT);
+    const result = step(state, commands({ 'teamA-0': { ...NO_MOVE, move: { x: 1, y: 0 } } }), DT);
     expect(result.state.phase).toBe('kickoff');
-    expect(result.state.players.p1.pos).toEqual(posBefore);
+    expect(result.state.players['teamA-0']!.pos).toEqual(posBefore);
 
     state = playThroughKickoff(state);
     expect(state.phase).toBe('playing');
@@ -68,7 +69,7 @@ describe('kickoff', () => {
 
 describe('gol em partida completa', () => {
   function makeScoringState(): GameState {
-    let state = createMatchState(1, 1);
+    let state = createMatchState(1, 1, ROSTER);
     state = playThroughKickoff(state);
     // Bola a caminho da linha esquerda, rápido o bastante pra cruzar dentro
     // de um único tick (por isso o teste de checkGoal com swept collision
@@ -83,9 +84,9 @@ describe('gol em partida completa', () => {
   it('marca o gol certo e entra na fase de congelamento/replay', () => {
     const state = makeScoringState();
     const result = step(state, commands(), DT);
-    expect(result.state.score.p2).toBe(1);
+    expect(result.state.score.teamB).toBe(1);
     expect(result.state.phase).toBe('goal');
-    expect(result.events).toContainEqual({ type: 'goal', scorer: 'p2' });
+    expect(result.events).toContainEqual({ type: 'goal', scorer: 'teamB' });
   });
 
   it('depois do congelamento+replay, reseta pra kickoff', () => {
@@ -100,28 +101,28 @@ describe('gol em partida completa', () => {
 
   it('termina a partida quando alguém atinge GOALS_TO_WIN', () => {
     let state = makeScoringState();
-    state = { ...state, score: { p1: 0, p2: MATCH.GOALS_TO_WIN - 1 } };
+    state = { ...state, score: { teamA: 0, teamB: MATCH.GOALS_TO_WIN - 1 } };
     const result = step(state, commands(), DT);
     expect(result.state.phase).toBe('ended');
-    expect(result.state.result).toBe('p2');
-    expect(result.events).toContainEqual({ type: 'matchEnded', result: 'p2' });
+    expect(result.state.result).toBe('teamB');
+    expect(result.events).toContainEqual({ type: 'matchEnded', result: 'teamB' });
   });
 });
 
 describe('cronômetro e prorrogação', () => {
   it('termina a partida quando o tempo acaba com placar diferente', () => {
-    let state = createMatchState(1, 1);
+    let state = createMatchState(1, 1, ROSTER);
     state = playThroughKickoff(state);
-    state = { ...state, timeLeftMs: 10, score: { p1: 2, p2: 1 } };
+    state = { ...state, timeLeftMs: 10, score: { teamA: 2, teamB: 1 } };
     const result = step(state, commands(), 1); // 1s > 10ms restantes
     expect(result.state.phase).toBe('ended');
-    expect(result.state.result).toBe('p1');
+    expect(result.state.result).toBe('teamA');
   });
 
   it('entra em prorrogação se o tempo acabar empatado', () => {
-    let state = createMatchState(1, 1);
+    let state = createMatchState(1, 1, ROSTER);
     state = playThroughKickoff(state);
-    state = { ...state, timeLeftMs: 10, score: { p1: 1, p2: 1 } };
+    state = { ...state, timeLeftMs: 10, score: { teamA: 1, teamB: 1 } };
     const result = step(state, commands(), 1);
     expect(result.state.phase).toBe('playing');
     expect(result.state.overtime).toBe(true);
@@ -129,34 +130,34 @@ describe('cronômetro e prorrogação', () => {
   });
 
   it('termina em empate se a prorrogação também esgotar', () => {
-    let state = createMatchState(1, 1);
+    let state = createMatchState(1, 1, ROSTER);
     state = playThroughKickoff(state);
-    state = { ...state, timeLeftMs: 10, overtime: true, score: { p1: 1, p2: 1 } };
+    state = { ...state, timeLeftMs: 10, overtime: true, score: { teamA: 1, teamB: 1 } };
     const result = step(state, commands(), 1);
     expect(result.state.phase).toBe('ended');
     expect(result.state.result).toBe('draw');
   });
 
   it('qualquer gol na prorrogação encerra a partida na hora (morte súbita)', () => {
-    let state = createMatchState(1, 1);
+    let state = createMatchState(1, 1, ROSTER);
     state = playThroughKickoff(state);
     state = {
       ...state,
       overtime: true,
-      score: { p1: 1, p2: 1 },
+      score: { teamA: 1, teamB: 1 },
       ball: { ...state.ball, pos: { x: 30, y: FIELD.HEIGHT / 2 }, vel: { x: -PHYS.BALL_MAX_SPEED, y: 0 } },
     };
     const result = step(state, commands(), DT);
     expect(result.state.phase).toBe('ended');
-    expect(result.state.result).toBe('p2');
+    expect(result.state.result).toBe('teamB');
   });
 });
 
 describe('anti-degenerescência', () => {
-  const { players } = createKickoffFormation();
+  const { players } = createKickoffFormation(ROSTER);
   const farPlayers: Record<PlayerId, Player> = {
-    p1: { ...players.p1, pos: { x: -9999, y: -9999 } },
-    p2: { ...players.p2, pos: { x: -9999, y: -9999 } },
+    'teamA-0': { ...players['teamA-0']!, pos: { x: -9999, y: -9999 } },
+    'teamB-0': { ...players['teamB-0']!, pos: { x: -9999, y: -9999 } },
   };
 
   it('não mexe na bola enquanto ela se move rápido o bastante', () => {
@@ -182,8 +183,8 @@ describe('anti-degenerescência', () => {
 
   it('não empurra se um jogador estiver perto', () => {
     const near: Record<PlayerId, Player> = {
-      p1: { ...players.p1, pos: { x: 55, y: 50 } },
-      p2: { ...players.p2, pos: { x: -9999, y: -9999 } },
+      'teamA-0': { ...players['teamA-0']!, pos: { x: 55, y: 50 } },
+      'teamB-0': { ...players['teamB-0']!, pos: { x: -9999, y: -9999 } },
     };
     let ball: Ball = { pos: { x: 50, y: 50 }, vel: { x: 0, y: 0 }, radius: PHYS.BALL_RADIUS, lastTouchedBy: null, stallTimer: 0 };
     const dt = STALL.TIME_THRESHOLD_S / 10;
@@ -196,13 +197,54 @@ describe('anti-degenerescência', () => {
 
 describe('step em partida já encerrada', () => {
   it('devolve o estado sem mudar nada e sem eventos, mesmo com comandos de verdade', () => {
-    let state = createMatchState(1, 1);
+    let state = createMatchState(1, 1, ROSTER);
     state = playThroughKickoff(state);
-    state = { ...state, phase: 'ended', result: 'p1' };
+    state = { ...state, phase: 'ended', result: 'teamA' };
 
-    const result = step(state, commands({ p1: { ...NO_MOVE, move: { x: 1, y: 1 }, kickHeld: true, dash: true } }), DT);
+    const result = step(state, commands({ 'teamA-0': { ...NO_MOVE, move: { x: 1, y: 1 }, kickHeld: true, dash: true } }), DT);
 
     expect(result.state).toBe(state); // mesma referência — nem um novo objeto é criado
     expect(result.events).toEqual([]);
+  });
+});
+
+describe('2v2 (roster de 2 jogadores por time)', () => {
+  const TEAM2_ROSTER: Record<TeamId, PlayerId[]> = { teamA: ['teamA-0', 'teamA-1'], teamB: ['teamB-0', 'teamB-1'] };
+
+  it('cria os 4 jogadores sem sobreposição de posição', () => {
+    const { players } = createKickoffFormation(TEAM2_ROSTER);
+    const ids = Object.keys(players) as PlayerId[];
+    expect(ids).toHaveLength(4);
+
+    const positions = ids.map((id) => `${players[id]!.pos.x},${players[id]!.pos.y}`);
+    expect(new Set(positions).size).toBe(4); // ninguém nasce empilhado
+
+    // teamA na metade esquerda, teamB na direita (mesma convenção do 1v1).
+    expect(players['teamA-0']!.pos.x).toBeLessThan(FIELD.WIDTH / 2);
+    expect(players['teamA-1']!.pos.x).toBeLessThan(FIELD.WIDTH / 2);
+    expect(players['teamB-0']!.pos.x).toBeGreaterThan(FIELD.WIDTH / 2);
+    expect(players['teamB-1']!.pos.x).toBeGreaterThan(FIELD.WIDTH / 2);
+  });
+
+  it('roda uma partida inteira de 4 jogadores sem erros, com todo mundo colidindo com todo mundo', () => {
+    let state = createMatchState(1, 1, TEAM2_ROSTER);
+    state = playThroughKickoff(state);
+
+    const fourWayCommands: Record<PlayerId, Command> = {
+      'teamA-0': { ...NO_MOVE, move: { x: 1, y: 0 } },
+      'teamA-1': { ...NO_MOVE, move: { x: 1, y: 1 } },
+      'teamB-0': { ...NO_MOVE, move: { x: -1, y: 0 } },
+      'teamB-1': { ...NO_MOVE, move: { x: -1, y: -1 } },
+    };
+
+    for (let i = 0; i < 600; i++) {
+      state = step(state, fourWayCommands, DT).state;
+      for (const player of Object.values(state.players)) {
+        expect(Number.isFinite(player.pos.x)).toBe(true);
+        expect(Number.isFinite(player.pos.y)).toBe(true);
+      }
+    }
+
+    expect(Object.keys(state.players)).toHaveLength(4);
   });
 });

@@ -4,8 +4,11 @@ import type { LevelProgress, MatchOutcome, MatchReward } from '../../progression
 
 export type EndGameData = {
   outcome: MatchOutcome;
-  score: { p1: number; p2: number };
-  difficultyLabel: string;
+  // Sempre do ponto de vista de QUEM ESTÁ VENDO a tela — em modo online o
+  // humano local pode ter sido o time A ou o B (ver localPlayerId em
+  // main.ts), então nunca é seguro assumir "meu time = teamA".
+  score: { myTeam: number; opponentTeam: number };
+  opponentLabel: string;
   reward: MatchReward;
   // Moedas garantidas mesmo saindo — menor que `reward.coins` (o total),
   // que só é creditado por completo se a pessoa escolher "Mais uma!" em
@@ -158,8 +161,8 @@ export class EndGameScreen {
   }
 
   show(data: EndGameData): void {
-    this.scoreP1El.textContent = String(data.score.p1);
-    this.scoreP2El.textContent = String(data.score.p2);
+    this.scoreP1El.textContent = String(data.score.myTeam);
+    this.scoreP2El.textContent = String(data.score.opponentTeam);
 
     this.resultEl.textContent = t(RESULT_KEY[data.outcome]);
     this.resultEl.className = `endgame-result ${RESULT_CLASS[data.outcome]}`;
@@ -169,9 +172,9 @@ export class EndGameScreen {
     this.streakEl.textContent = data.reward.newStreak > 1 ? t('endgame.streak', { streak: data.reward.newStreak }) : '';
 
     this.rowP1Label.textContent = data.youLabel;
-    this.rowP1Stats.textContent = `${t('endgame.goals')}: ${data.score.p1}`;
-    this.rowP2Label.textContent = `IA (${data.difficultyLabel})`;
-    this.rowP2Stats.textContent = `${t('endgame.goals')}: ${data.score.p2}`;
+    this.rowP1Stats.textContent = `${t('endgame.goals')}: ${data.score.myTeam}`;
+    this.rowP2Label.textContent = data.opponentLabel;
+    this.rowP2Stats.textContent = `${t('endgame.goals')}: ${data.score.opponentTeam}`;
 
     this.gainLabelEl.textContent = t('endgame.level', { level: data.levelAfter.level });
     this.gainValueEl.textContent = t('endgame.xpGained', { xp: data.reward.xp });

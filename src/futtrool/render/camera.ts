@@ -7,12 +7,13 @@ import type { Vec2 } from '../core/types';
 
 export type ScreenPoint = { x: number; y: number };
 
-// Spec seção 11: câmera segue um ponto entre a bola e o jogador (peso 0.7
-// bola / 0.3 jogador), com suavização (lerp 0.12) e clamp nas bordas do
-// campo; zoom dinâmico entre 0.9 e 1.3 — usamos a distância entre os dois
-// jogadores pro zoom base (mais perto um do outro = mais zoom, matando a
-// jogada de perto) e um empurrão extra até 1.25 quando a bola entra no
-// terço final (perto de qualquer um dos dois gols).
+// Spec seção 11: câmera segue um ponto entre a bola e "meu" jogador (peso
+// 0.7 bola / 0.3 jogador), com suavização (lerp 0.12) e clamp nas bordas do
+// campo; zoom dinâmico entre 0.9 e 1.3 — generalizado pra N jogadores em
+// campo (1v1, 2v2, ...): usamos o "espalhamento" (bounding box) de todo
+// mundo em campo pro zoom base (mais junto = mais zoom, matando a jogada de
+// perto) e um empurrão extra até 1.25 quando a bola entra no terço final
+// (perto de qualquer um dos dois gols).
 const FOLLOW_BALL_WEIGHT = 0.7;
 const FOLLOW_PLAYER_WEIGHT = 0.3;
 const FOLLOW_LERP = 0.12;
@@ -76,15 +77,28 @@ export class Camera {
 
   // Chamado uma vez por frame de render (fora do passo fixo, com o alpha
   // que quiser — na prática usamos o dt real do frame) pra atualizar
-  // posição/zoom suavemente em direção ao alvo do momento.
-  follow(ballPos: Vec2, myPlayerPos: Vec2, otherPlayerPos: Vec2): void {
+  // posição/zoom suavemente em direção ao alvo do momento. `allPlayerPos`
+  // inclui TODO mundo em campo (inclusive "myPlayerPos") — usado só pro
+  // cálculo de zoom (espalhamento de todo mundo), não pro centro (que
+  // continua enviesado pra "minha" posição, não a média de todos).
+  follow(ballPos: Vec2, myPlayerPos: Vec2, allPlayerPos: Vec2[]): void {
     const desiredX = ballPos.x * FOLLOW_BALL_WEIGHT + myPlayerPos.x * FOLLOW_PLAYER_WEIGHT;
     const desiredY = ballPos.y * FOLLOW_BALL_WEIGHT + myPlayerPos.y * FOLLOW_PLAYER_WEIGHT;
     this.centerX += (desiredX - this.centerX) * FOLLOW_LERP;
     this.centerY += (desiredY - this.centerY) * FOLLOW_LERP;
 
-    const playerDist = Math.hypot(myPlayerPos.x - otherPlayerPos.x, myPlayerPos.y - otherPlayerPos.y);
-    const distFactor = clamp(playerDist / (FIELD.WIDTH * 0.5), 0, 1);
+    let minX = ballPos.x;
+    let maxX = ballPos.x;
+    let minY = ballPos.y;
+    let maxY = ballPos.y;
+    for (const pos of allPlayerPos) {
+      minX = Math.min(minX, pos.x);
+      maxX = Math.max(maxX, pos.x);
+      minY = Math.min(minY, pos.y);
+      maxY = Math.max(maxY, pos.y);
+    }
+    const spread = Math.hypot(maxX - minX, maxY - minY);
+    const distFactor = clamp(spread / (FIELD.WIDTH * 0.5), 0, 1);
     let targetZoom = ZOOM_MAX - distFactor * (ZOOM_MAX - ZOOM_MIN);
 
     const distFromNearestGoalLine = Math.min(ballPos.x, FIELD.WIDTH - ballPos.x);

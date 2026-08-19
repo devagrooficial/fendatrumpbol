@@ -52,16 +52,16 @@ export function renderMatchHud(
   ctx.font = "800 26px 'Segoe UI', system-ui, sans-serif";
   ctx.fillStyle = THEME.TEAM_1;
   ctx.textAlign = 'right';
-  ctx.fillText(String(state.score.p1), centerX - 6, 34);
+  ctx.fillText(String(state.score.teamA), centerX - 6, 34);
   ctx.fillStyle = 'rgba(253, 246, 255, 0.5)';
   ctx.textAlign = 'center';
   ctx.fillText('-', centerX, 34);
   ctx.fillStyle = THEME.TEAM_2;
   ctx.textAlign = 'left';
-  ctx.fillText(String(state.score.p2), centerX + 6, 34);
+  ctx.fillText(String(state.score.teamB), centerX + 6, 34);
 
-  drawPips(ctx, centerX - 4, 48, state.score.p1, THEME.TEAM_1, -1);
-  drawPips(ctx, centerX + 4, 48, state.score.p2, THEME.TEAM_2, 1);
+  drawPips(ctx, centerX - 4, 48, state.score.teamA, THEME.TEAM_1, -1);
+  drawPips(ctx, centerX + 4, 48, state.score.teamB, THEME.TEAM_2, 1);
 
   ctx.font = "600 14px 'Segoe UI', system-ui, sans-serif";
   ctx.fillStyle = 'rgba(253, 246, 255, 0.75)';
