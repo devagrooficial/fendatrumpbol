@@ -11,6 +11,7 @@ type ProductRow = {
   name: string;
   description: string | null;
   price_coins: number;
+  image_url: string;
   active: boolean;
   views: number;
   purchases: number;
@@ -36,6 +37,10 @@ export function mountStoreScreen(el: HTMLElement): () => void {
         <div class="admin__field" style="margin:0;">
           <label><input type="checkbox" data-new-active checked /> Ativo</label>
         </div>
+      </div>
+      <div class="admin__field">
+        <label>URL da imagem (obrigatório)</label>
+        <input type="text" class="admin__input" data-new-image placeholder="https://... ou /caminho/da/imagem.png" />
       </div>
       <div class="admin__field">
         <label>Descrição</label>
@@ -73,12 +78,13 @@ export function mountStoreScreen(el: HTMLElement): () => void {
     listEl.innerHTML = `
       <div class="admin__table-wrap">
         <table class="admin__table">
-          <thead><tr><th>Nome</th><th>Preço</th><th>Status</th><th>Visualizações</th><th>Compras</th><th></th></tr></thead>
+          <thead><tr><th>Imagem</th><th>Nome</th><th>Preço</th><th>Status</th><th>Visualizações</th><th>Compras</th><th></th></tr></thead>
           <tbody>
             ${rows
               .map(
                 (row) => `
               <tr>
+                <td><img src="${row.image_url}" alt="${row.name}" style="width:48px;height:48px;object-fit:cover;border-radius:0.4rem;background:rgba(253,246,255,0.06);" /></td>
                 <td>${row.name}</td>
                 <td>$ ${row.price_coins}</td>
                 <td><span class="admin__tag ${row.active ? 'admin__tag--ok' : 'admin__tag--muted'}">${row.active ? 'Ativo' : 'Inativo'}</span></td>
@@ -125,10 +131,16 @@ export function mountStoreScreen(el: HTMLElement): () => void {
     const name = el.querySelector<HTMLInputElement>('[data-new-name]')!.value.trim();
     const price = Number(el.querySelector<HTMLInputElement>('[data-new-price]')!.value) || 0;
     const active = el.querySelector<HTMLInputElement>('[data-new-active]')!.checked;
+    const imageUrl = el.querySelector<HTMLInputElement>('[data-new-image]')!.value.trim();
     const description = el.querySelector<HTMLTextAreaElement>('[data-new-description]')!.value.trim();
 
     if (!name) {
       createMessage.textContent = 'Nome é obrigatório.';
+      createMessage.className = 'admin__message admin__message--error';
+      return;
+    }
+    if (!imageUrl) {
+      createMessage.textContent = 'Imagem é obrigatória — produto sem foto vende pior.';
       createMessage.className = 'admin__message admin__message--error';
       return;
     }
@@ -137,6 +149,7 @@ export function mountStoreScreen(el: HTMLElement): () => void {
       name,
       description: description || null,
       price_coins: price,
+      image_url: imageUrl,
       active,
     });
 
@@ -149,6 +162,7 @@ export function mountStoreScreen(el: HTMLElement): () => void {
     createMessage.textContent = 'Criado!';
     createMessage.className = 'admin__message admin__message--success';
     el.querySelector<HTMLInputElement>('[data-new-name]')!.value = '';
+    el.querySelector<HTMLInputElement>('[data-new-image]')!.value = '';
     el.querySelector<HTMLTextAreaElement>('[data-new-description]')!.value = '';
     await load();
   }
