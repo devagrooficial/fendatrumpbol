@@ -14,6 +14,18 @@ import { Camera } from '../../futtrool/render/camera';
 import { renderBall, renderField, renderPlayer, renderPlayerLabel } from '../../futtrool/render/renderer';
 import { renderMatchHud } from '../../futtrool/ui/hud';
 import { THEME } from '../../futtrool/render/theme';
+import { adManager } from '../../futtrool/ads/adManager';
+import { loadAdsConfig } from '../../futtrool/ads/loadAdsConfig';
+
+// Espectador NÃO conta como impressão de anúncio de verdade (é o admin
+// olhando, não um jogador real vendo o anúncio) — por isso usa só
+// getCreative()/render*() do adManager (desenho puro), nunca
+// trackFieldVisibility/trackDomSlotShown (que é o que gera os eventos de
+// impression/viewable). Mesmo adManager (singleton) que o jogo de verdade
+// usa — se o admin também tiver o jogo aberto na mesma aba (não é o caso
+// aqui, cada aba é seu próprio bundle), não haveria conflito de qualquer
+// forma, já que cada import de módulo é isolado por página.
+void loadAdsConfig().then((config) => adManager.load(config));
 
 export function mountSpectateScreen(root: HTMLElement, roomId: string): void {
   root.innerHTML = `
@@ -35,6 +47,14 @@ export function mountSpectateScreen(root: HTMLElement, roomId: string): void {
   const camera = new Camera();
   let latestState: GameState | null = null;
   let playerNames: Record<string, string> = {};
+  // Giro visual da bola (mesma fórmula de render/fx.ts Fx.updateBallSpin:
+  // ω = velocidade/raio, "rolamento sem deslizar") — só o suficiente pro
+  // ball-skin de anúncio girar junto com o movimento, igual ao jogo de
+  // verdade. Pulso de chute (Fx.getBallPulseScale) fica de fora de
+  // propósito: depende do evento 'kick' que o espectador não recebe (só
+  // 'state'), efeito cosmético pequeno o bastante pra não fazer falta.
+  let ballSpin = 0;
+  let lastFrameTime = performance.now();
   // true assim que qualquer mensagem "terminal" chega (negado, partida
   // encerrada) — o handler de 'close' só usa a mensagem genérica se NENHUMA
   // dessas já tiver explicado o motivo, senão pisava em cima da mais
@@ -57,27 +77,40 @@ export function mountSpectateScreen(root: HTMLElement, roomId: string): void {
     return playerNames[id] ?? `${id} (bot)`;
   }
 
-  function draw(): void {
+  function draw(now: number): void {
     requestAnimationFrame(draw);
+    const dt = Math.min((now - lastFrameTime) / 1000, 0.25);
+    lastFrameTime = now;
     const w = window.innerWidth;
     const h = window.innerHeight;
 
     if (!latestState) return;
     const players = Object.values(latestState.players);
-    const ballPos = latestState.ball.pos;
+    const ball = latestState.ball;
     camera.follow(
-      ballPos,
-      ballPos, // espectador não tem "meu jogador" — câmera segue só a bola
+      ball.pos,
+      ball.pos, // espectador não tem "meu jogador" — câmera segue só a bola
       players.map((p) => p.pos),
     );
 
     renderField(ctx!, camera, w, h);
+    // Placas de campo (seção 10.3): sempre atrás de jogador/bola, igual ao
+    // jogo de verdade (main.ts render()).
+    adManager.renderFieldSlots(ctx!, camera);
+
     for (const player of players) {
       const fill = { mode: 'solid' as const, colors: [player.teamId === 'teamA' ? THEME.TEAM_1 : THEME.TEAM_2] };
       renderPlayer(ctx!, camera, player, fill);
+      adManager.renderPlayerBadge(ctx!, camera, player.pos, player.radius);
       renderPlayerLabel(ctx!, camera, player, labelFor(player.id));
     }
-    renderBall(ctx!, camera, latestState.ball);
+
+    const speed = Math.hypot(ball.vel.x, ball.vel.y);
+    ballSpin = (ballSpin + (speed / ball.radius) * dt) % (Math.PI * 2);
+    if (!adManager.renderBallSkin(ctx!, camera, ball.pos, ball.radius, ballSpin)) {
+      renderBall(ctx!, camera, ball, ballSpin);
+    }
+
     renderMatchHud(ctx!, w, h, latestState, 'espectador (admin)');
   }
   requestAnimationFrame(draw);
