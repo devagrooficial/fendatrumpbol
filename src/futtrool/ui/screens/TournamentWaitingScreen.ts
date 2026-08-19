@@ -3,8 +3,7 @@
 //    link de convite e um card por pessoa que já entrou, igual à espera
 //    de "Chamar amigo" das partidas normais).
 // 2) Esperando o CAMPEONATO encher (0-8 vagas) — mostra um card por
-//    integrante do MEU time (só eu, se for 1v1) e reserva o espaço pro
-//    áudio/Jitsi de uma entrega futura.
+//    integrante do MEU time (só eu, se for 1v1).
 
 import { t } from '../../i18n';
 import { Audio } from '../../audio/Audio';
@@ -36,7 +35,6 @@ export class TournamentWaitingScreen {
   private readonly linkInput: HTMLInputElement;
   private readonly copyStatusEl: HTMLParagraphElement;
   private readonly membersEl: HTMLDivElement;
-  private readonly audioNoteEl: HTMLDivElement;
 
   constructor(onLeave: () => void) {
     this.root = document.createElement('div');
@@ -61,11 +59,6 @@ export class TournamentWaitingScreen {
 
         <div class="tournament-member-cards" data-members></div>
 
-        <div class="tournament-waiting__teammates" data-audio-note>
-          <p class="tournament-waiting__section-label">${t('tournament.waiting.audio')}</p>
-          <p class="tournament-waiting__placeholder">${t('tournament.waiting.audioComingSoon')}</p>
-        </div>
-
         <button type="button" class="screen__button screen__button--secondary" data-leave>${t('tournament.waiting.leave')}</button>
       </div>
     `;
@@ -79,7 +72,6 @@ export class TournamentWaitingScreen {
     const copyButton = this.root.querySelector<HTMLButtonElement>('[data-copy-link]');
     const copyStatusEl = this.root.querySelector<HTMLParagraphElement>('[data-copy-status]');
     const membersEl = this.root.querySelector<HTMLDivElement>('[data-members]');
-    const audioNoteEl = this.root.querySelector<HTMLDivElement>('[data-audio-note]');
     const leaveButton = this.root.querySelector<HTMLButtonElement>('[data-leave]');
     if (
       !titleEl ||
@@ -91,7 +83,6 @@ export class TournamentWaitingScreen {
       !copyButton ||
       !copyStatusEl ||
       !membersEl ||
-      !audioNoteEl ||
       !leaveButton
     ) {
       throw new Error('Markup do TournamentWaitingScreen incompleto');
@@ -104,7 +95,6 @@ export class TournamentWaitingScreen {
     this.linkInput = linkInput;
     this.copyStatusEl = copyStatusEl;
     this.membersEl = membersEl;
-    this.audioNoteEl = audioNoteEl;
 
     copyButton.addEventListener('click', () => {
       Audio.click();
@@ -138,7 +128,6 @@ export class TournamentWaitingScreen {
     this.linkFieldEl.hidden = false;
     this.linkInput.value = inviteLink;
     this.copyStatusEl.textContent = '';
-    this.audioNoteEl.hidden = true;
 
     this.membersEl.innerHTML = team.members.map((m) => memberCardHtml(m.name, m.name === myName)).join('');
 
@@ -153,7 +142,6 @@ export class TournamentWaitingScreen {
     this.subtitleEl.textContent = t('tournament.waiting.slots', { filled: tournament.teams.length, total: TOURNAMENT_SLOTS });
     this.progressEl.hidden = false;
     this.linkFieldEl.hidden = true;
-    this.audioNoteEl.hidden = false;
     this.updateDots(tournament.teams.length);
 
     if (myTeamNames.length <= 1) {

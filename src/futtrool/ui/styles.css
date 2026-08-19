@@ -934,20 +934,6 @@ html, body {
   width: 100%;
 }
 
-.tournament-waiting__teammates {
-  width: 100%;
-  padding: 1rem;
-  border: 1px dashed rgba(253, 246, 255, 0.2);
-  border-radius: 0.75rem;
-  margin: 0.5rem 0 1.5rem;
-}
-
-.tournament-waiting__placeholder {
-  margin: 0;
-  font-size: 0.8rem;
-  color: rgba(253, 246, 255, 0.45);
-}
-
 /* Card de integrante — reaproveitado na formação de time e na fila do
    campeonato (só eu, se 1v1; eu + colegas, se dupla/trio). */
 .tournament-member-cards {
