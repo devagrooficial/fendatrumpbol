@@ -557,6 +557,64 @@ html, body {
   color: rgba(253, 246, 255, 0.85);
 }
 
+/* Estatísticas da partida (menu > fim de jogo): territorial (tempo com a
+   bola no campo de ataque de cada time) + toque/gol por jogador — cobre
+   1v1 a 3v3, quantidade de linhas varia com o roster. */
+.endgame-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.endgame-stats__territory {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: rgba(253, 246, 255, 0.75);
+}
+
+.endgame-stats__territory-bar {
+  flex: 1;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: rgba(75, 155, 240, 0.35);
+  overflow: hidden;
+}
+
+.endgame-stats__territory-fill {
+  height: 100%;
+  background: rgba(240, 87, 75, 0.85);
+}
+
+.endgame-stats__players {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.endgame-stats__player-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.7rem;
+  border-radius: 0.6rem;
+  background: rgba(253, 246, 255, 0.05);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.endgame-stats__player-row--me {
+  background: rgba(233, 61, 130, 0.2);
+}
+
+.endgame-stats__player-detail {
+  color: rgba(253, 246, 255, 0.7);
+  font-weight: 600;
+}
+
 .endgame-xp {
   display: flex;
   flex-direction: column;

@@ -72,6 +72,31 @@ export type AvatarColor = {
   colors: string[];
 };
 
+// Estatísticas da partida (menu > fim de jogo: "toque na bola", "gol por
+// jogador", "% do tempo com a bola no campo do adversário") — precisa
+// morar no GameState (não calculado depois, à parte) pelo mesmo motivo de
+// `score`/`matchSettings`: step() é função pura, e o servidor autoritativo
+// (multiplayer) é quem manda o número final pro cliente salvar no banco,
+// não o cliente calculando por conta própria (senão 2 jogadores online
+// veriam números diferentes).
+export type MatchStats = {
+  // Só conta TROCA de posse (lastTouchedBy virando um PlayerId novo), não
+  // um por tick — senão dar 1s driblando do lado do adversário contaria
+  // como ~60 toques.
+  touches: Record<PlayerId, number>;
+  goalsByPlayer: Record<PlayerId, number>;
+  // Metade DIREITA do campo (x >= FIELD.WIDTH/2) — do ponto de vista de
+  // teamA (que defende a esquerda), essa é a metade de ataque; pra teamB é
+  // o oposto. A UI calcula a % de cada time a partir desses dois números
+  // (ballInRightHalfMs/playingElapsedMs pra teamA, o complemento pra
+  // teamB) em vez de guardar duas porcentagens já prontas.
+  ballInRightHalfMs: number;
+  // Denominador acima: só soma enquanto phase === 'playing' (não conta
+  // kickoff/congelamento de gol/prorrogação... na real prorrogação também
+  // é 'playing', então conta sim — só kickoff e 'goal' ficam de fora).
+  playingElapsedMs: number;
+};
+
 export type GameState = {
   tick: number;
   phase: MatchPhase;
@@ -91,6 +116,7 @@ export type GameState = {
   // reposicionar sem depender de ordem de iteração de objeto.
   roster: Record<TeamId, PlayerId[]>;
   matchSettings: MatchSettings;
+  stats: MatchStats;
   players: Record<PlayerId, Player>;
   ball: Ball;
   rngState: number;

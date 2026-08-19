@@ -2,6 +2,17 @@ import { t } from '../../i18n';
 import { Audio } from '../../audio/Audio';
 import type { LevelProgress, MatchOutcome, MatchReward } from '../../progression/economy';
 
+// Estatísticas da partida (core/types.ts MatchStats) — já resolvidas do
+// ponto de vista de quem está vendo a tela (mesma regra do resto de
+// EndGameData): `mine` marca o time de quem chamou show(), não sempre
+// teamA (online o humano local pode ter caído em qualquer time).
+export type EndGamePlayerStat = {
+  label: string;
+  mine: boolean;
+  goals: number;
+  touches: number;
+};
+
 export type EndGameData = {
   outcome: MatchOutcome;
   // Sempre do ponto de vista de QUEM ESTÁ VENDO a tela — em modo online o
@@ -18,6 +29,10 @@ export type EndGameData = {
   // "Você" fixo de antes.
   youLabel: string;
   levelAfter: LevelProgress;
+  players: EndGamePlayerStat[];
+  // % (0..100) do tempo de jogo com a bola no campo de ATAQUE de cada
+  // time — soma ~100 entre os dois (ver core/types.ts ballInRightHalfMs).
+  attackPct: { myTeam: number; opponentTeam: number };
 };
 
 const RESULT_CLASS: Record<MatchOutcome, string> = {
@@ -42,6 +57,10 @@ export class EndGameScreen {
   private readonly rowP1Stats: HTMLSpanElement;
   private readonly rowP2Stats: HTMLSpanElement;
   private readonly rowP2Label: HTMLSpanElement;
+  private readonly territoryMyEl: HTMLSpanElement;
+  private readonly territoryOppEl: HTMLSpanElement;
+  private readonly territoryFillEl: HTMLDivElement;
+  private readonly statsPlayersEl: HTMLDivElement;
   private readonly gainLabelEl: HTMLSpanElement;
   private readonly gainValueEl: HTMLSpanElement;
   private readonly gainFillEl: HTMLDivElement;
@@ -74,6 +93,15 @@ export class EndGameScreen {
             <span class="endgame-row__stats" data-row-p2-stats></span>
           </div>
         </div>
+        <div class="endgame-stats">
+          <p class="screen__field-label">${t('endgame.stats.title')}</p>
+          <div class="endgame-stats__territory">
+            <span data-territory-my></span>
+            <div class="endgame-stats__territory-bar"><div class="endgame-stats__territory-fill" data-territory-fill></div></div>
+            <span data-territory-opp></span>
+          </div>
+          <div class="endgame-stats__players" data-stats-players></div>
+        </div>
         <div class="endgame-xp">
           <div class="endgame-xp-bar endgame-xp-bar--gain">
             <div class="endgame-xp-bar__fill" data-gain-fill></div>
@@ -101,6 +129,10 @@ export class EndGameScreen {
     const rowP1Stats = this.root.querySelector<HTMLSpanElement>('[data-row-p1-stats]');
     const rowP2Stats = this.root.querySelector<HTMLSpanElement>('[data-row-p2-stats]');
     const rowP2Label = this.root.querySelector<HTMLSpanElement>('[data-row-p2-label]');
+    const territoryMyEl = this.root.querySelector<HTMLSpanElement>('[data-territory-my]');
+    const territoryOppEl = this.root.querySelector<HTMLSpanElement>('[data-territory-opp]');
+    const territoryFillEl = this.root.querySelector<HTMLDivElement>('[data-territory-fill]');
+    const statsPlayersEl = this.root.querySelector<HTMLDivElement>('[data-stats-players]');
     const gainLabelEl = this.root.querySelector<HTMLSpanElement>('[data-gain-label]');
     const gainValueEl = this.root.querySelector<HTMLSpanElement>('[data-gain-value]');
     const gainFillEl = this.root.querySelector<HTMLDivElement>('[data-gain-fill]');
@@ -119,6 +151,10 @@ export class EndGameScreen {
       !rowP1Stats ||
       !rowP2Stats ||
       !rowP2Label ||
+      !territoryMyEl ||
+      !territoryOppEl ||
+      !territoryFillEl ||
+      !statsPlayersEl ||
       !gainLabelEl ||
       !gainValueEl ||
       !gainFillEl ||
@@ -139,6 +175,10 @@ export class EndGameScreen {
     this.rowP1Stats = rowP1Stats;
     this.rowP2Stats = rowP2Stats;
     this.rowP2Label = rowP2Label;
+    this.territoryMyEl = territoryMyEl;
+    this.territoryOppEl = territoryOppEl;
+    this.territoryFillEl = territoryFillEl;
+    this.statsPlayersEl = statsPlayersEl;
     this.gainLabelEl = gainLabelEl;
     this.gainValueEl = gainValueEl;
     this.gainFillEl = gainFillEl;
@@ -175,6 +215,24 @@ export class EndGameScreen {
     this.rowP1Stats.textContent = `${t('endgame.goals')}: ${data.score.myTeam}`;
     this.rowP2Label.textContent = data.opponentLabel;
     this.rowP2Stats.textContent = `${t('endgame.goals')}: ${data.score.opponentTeam}`;
+
+    const myPct = Math.round(data.attackPct.myTeam);
+    this.territoryMyEl.textContent = `${data.youLabel} ${myPct}%`;
+    this.territoryOppEl.textContent = `${Math.round(data.attackPct.opponentTeam)}% ${data.opponentLabel}`;
+    this.territoryFillEl.style.width = `${myPct}%`;
+
+    this.statsPlayersEl.innerHTML = '';
+    for (const player of data.players) {
+      const row = document.createElement('div');
+      row.className = `endgame-stats__player-row${player.mine ? ' endgame-stats__player-row--me' : ''}`;
+      const label = document.createElement('span');
+      label.textContent = player.label;
+      const detail = document.createElement('span');
+      detail.className = 'endgame-stats__player-detail';
+      detail.textContent = t('endgame.stats.playerLine', { goals: player.goals, touches: player.touches });
+      row.append(label, detail);
+      this.statsPlayersEl.append(row);
+    }
 
     this.gainLabelEl.textContent = t('endgame.level', { level: data.levelAfter.level });
     this.gainValueEl.textContent = t('endgame.xpGained', { xp: data.reward.xp });

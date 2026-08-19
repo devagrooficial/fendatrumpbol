@@ -95,6 +95,8 @@
   "endgame.rematch": "Mais uma!",
   "endgame.rematch.reward": "Mais uma! +${coins}",
   "endgame.streak": "🔥 sequência de {streak}",
+  "endgame.stats.title": "Estatísticas da partida",
+  "endgame.stats.playerLine": "{goals} gols · {touches} toques",
 
   "replay.label": "REPLAY",
   "replay.react": "Reagir +$1",

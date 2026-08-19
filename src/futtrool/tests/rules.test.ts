@@ -333,3 +333,91 @@ describe('3v3 (roster de 3 jogadores por time — prova que generaliza, não só
     expect(Object.keys(state.players)).toHaveLength(6);
   });
 });
+
+describe('estatísticas da partida (core/types.ts MatchStats)', () => {
+  function stateWithBallNear(playerId: PlayerId, lastTouchedBy: PlayerId | null): GameState {
+    let state = createMatchState(1, 1, ROSTER);
+    state = playThroughKickoff(state);
+    const player = state.players[playerId]!;
+    return {
+      ...state,
+      ball: { ...state.ball, pos: { x: player.pos.x + 10, y: player.pos.y }, vel: { x: 0, y: 0 }, lastTouchedBy },
+    };
+  }
+
+  it('conta 1 toque quando a posse da bola muda pra um jogador', () => {
+    const state = stateWithBallNear('teamA-0', null);
+    expect(state.stats.touches['teamA-0']).toBe(0);
+
+    const result = step(state, commands(), DT);
+    expect(result.state.ball.lastTouchedBy).toBe('teamA-0');
+    expect(result.state.stats.touches['teamA-0']).toBe(1);
+  });
+
+  it('não conta um toque novo a cada tick em que a posse continua a mesma', () => {
+    const state = stateWithBallNear('teamA-0', 'teamA-0'); // já era dele ANTES desse tick
+    const seeded = { ...state, stats: { ...state.stats, touches: { ...state.stats.touches, 'teamA-0': 1 } } };
+
+    const result = step(seeded, commands(), DT);
+    expect(result.state.ball.lastTouchedBy).toBe('teamA-0');
+    expect(result.state.stats.touches['teamA-0']).toBe(1); // continua 1, não virou 2
+  });
+
+  it('conta toque de um jogador diferente sem mexer na contagem do anterior', () => {
+    const state = stateWithBallNear('teamB-0', 'teamA-0');
+    const seeded = { ...state, stats: { ...state.stats, touches: { ...state.stats.touches, 'teamA-0': 1 } } };
+
+    const result = step(seeded, commands(), DT);
+    expect(result.state.ball.lastTouchedBy).toBe('teamB-0');
+    expect(result.state.stats.touches['teamB-0']).toBe(1);
+    expect(result.state.stats.touches['teamA-0']).toBe(1);
+  });
+
+  it('credita o gol ao jogador que tocou por último, quando ele é do time que marcou', () => {
+    let state = createMatchState(1, 1, ROSTER);
+    state = playThroughKickoff(state);
+    state = {
+      ...state,
+      ball: { ...state.ball, pos: { x: 30, y: FIELD.HEIGHT / 2 }, vel: { x: -PHYS.BALL_MAX_SPEED, y: 0 }, lastTouchedBy: 'teamB-0' },
+    };
+    const result = step(state, commands(), DT);
+    expect(result.state.score.teamB).toBe(1);
+    expect(result.state.stats.goalsByPlayer['teamB-0']).toBe(1);
+  });
+
+  it('NÃO credita o jogador em gol contra (último toque foi do time que sofreu o gol)', () => {
+    let state = createMatchState(1, 1, ROSTER);
+    state = playThroughKickoff(state);
+    state = {
+      ...state,
+      // teamA-0 tocou por último, mas a bola entra no gol da ESQUERDA
+      // (defendido por teamA) — gol contra: teamB marca no placar, mas
+      // teamA-0 não ganha crédito individual por isso.
+      ball: { ...state.ball, pos: { x: 30, y: FIELD.HEIGHT / 2 }, vel: { x: -PHYS.BALL_MAX_SPEED, y: 0 }, lastTouchedBy: 'teamA-0' },
+    };
+    const result = step(state, commands(), DT);
+    expect(result.state.score.teamB).toBe(1);
+    expect(result.state.stats.goalsByPlayer['teamA-0']).toBe(0);
+    expect(result.state.stats.goalsByPlayer['teamB-0']).toBe(0);
+  });
+
+  it('acumula tempo com a bola na metade direita do campo', () => {
+    let state = createMatchState(1, 1, ROSTER);
+    state = playThroughKickoff(state);
+    state = { ...state, ball: { ...state.ball, pos: { x: FIELD.WIDTH * 0.75, y: FIELD.HEIGHT / 2 }, vel: { x: 0, y: 0 } } };
+
+    const result = step(state, commands(), 1); // dt = 1s
+    expect(result.state.stats.playingElapsedMs).toBeCloseTo(1000, 0);
+    expect(result.state.stats.ballInRightHalfMs).toBeCloseTo(1000, 0);
+  });
+
+  it('não conta a metade direita quando a bola está na metade esquerda', () => {
+    let state = createMatchState(1, 1, ROSTER);
+    state = playThroughKickoff(state);
+    state = { ...state, ball: { ...state.ball, pos: { x: FIELD.WIDTH * 0.25, y: FIELD.HEIGHT / 2 }, vel: { x: 0, y: 0 } } };
+
+    const result = step(state, commands(), 1);
+    expect(result.state.stats.playingElapsedMs).toBeCloseTo(1000, 0);
+    expect(result.state.stats.ballInRightHalfMs).toBe(0);
+  });
+});

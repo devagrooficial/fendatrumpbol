@@ -44,6 +44,7 @@ import { getApelido } from '../auth/profile';
 import { ballFromSnapshot, playerFromSnapshot, ReplayBuffer, type ReplaySnapshot } from './replay/buffer';
 import { ReplayPlayer } from './replay/player';
 import { ReplayStore, type SavedReplay } from './replay/storage';
+import { MatchStatsStore } from './stats/storage';
 import { adManager } from './ads/adManager';
 import type { AdsConfig } from './ads/types';
 
@@ -200,6 +201,7 @@ function colorFor(player: { id: PlayerId; teamId: TeamId }): AvatarColor {
 let pendingRematchBonus = 0;
 
 const replayStore = new ReplayStore();
+const matchStatsStore = new MatchStatsStore();
 const replayBuffer = new ReplayBuffer();
 const replayPlayer = new ReplayPlayer();
 // true durante a janela de replay de verdade dentro da fase 'goal' (depois
@@ -438,6 +440,20 @@ function endMatchFlow(): void {
   };
   progressionStore.save(progression);
 
+  // % do tempo de jogo com a bola na metade DIREITA do campo (ver
+  // core/types.ts MatchStats.ballInRightHalfMs) é sempre o campo de
+  // ataque de teamA — pra teamB é o complemento. Convertido aqui pro
+  // ponto de vista de "meu time" (ver comentário de myTeam acima).
+  const rightHalfPct = state.stats.playingElapsedMs > 0 ? (state.stats.ballInRightHalfMs / state.stats.playingElapsedMs) * 100 : 0;
+  const attackPctByTeam: Record<TeamId, number> = { teamA: rightHalfPct, teamB: 100 - rightHalfPct };
+
+  const statsPlayers = (Object.keys(state.players) as PlayerId[]).map((id) => ({
+    label: nameFor(id),
+    mine: id === localPlayerId,
+    goals: state.stats.goalsByPlayer[id] ?? 0,
+    touches: state.stats.touches[id] ?? 0,
+  }));
+
   appScreen = 'endgame';
   hideAllScreens();
   endGameScreen.show({
@@ -448,6 +464,19 @@ function endMatchFlow(): void {
     exitCoins,
     youLabel: displayName,
     levelAfter,
+    players: statsPlayers,
+    attackPct: { myTeam: attackPctByTeam[myTeam], opponentTeam: attackPctByTeam[opponentTeam] },
+  });
+
+  void matchStatsStore.save({
+    teamSize: state.roster.teamA.length,
+    online: onlineMode,
+    outcome,
+    scoreMine: state.score[myTeam],
+    scoreOpponent: state.score[opponentTeam],
+    goals: state.stats.goalsByPlayer[localPlayerId] ?? 0,
+    touches: state.stats.touches[localPlayerId] ?? 0,
+    attackPct: attackPctByTeam[myTeam],
   });
 }
 

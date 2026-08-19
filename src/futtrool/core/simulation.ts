@@ -10,7 +10,8 @@
 // (fisicamente faz sentido poder esbarrar no seu próprio parceiro).
 
 import type { Ball, Command, GameState, MatchEvent, Player, PlayerId, TeamId } from './types';
-import { MATCH, PHYS } from './constants';
+import { teamOf } from './types';
+import { FIELD, MATCH, PHYS } from './constants';
 import {
   resolveCircleCollision,
   resolveWallCollision,
@@ -84,6 +85,7 @@ function stepPlaying(
   let players: Record<PlayerId, Player> = {};
   let ball = state.ball;
   const prevBallPos = ball.pos;
+  const prevLastTouchedBy = ball.lastTouchedBy;
 
   // 1) Dash/movimento/chute — por jogador, sem interação entre eles ainda.
   for (const id of playerIds) {
@@ -145,11 +147,40 @@ function stepPlaying(
 
   const scoringTeam = checkGoal(prevBallPos, ball.pos, ball.radius);
 
+  // Estatísticas (menu > fim de jogo, ver core/types.ts MatchStats): toque
+  // é só TROCA de posse (lastTouchedBy virando um jogador novo), não um por
+  // tick — senão driblar do lado do adversário por 1s contaria uns 60
+  // "toques". Metade direita/esquerda: ver comentário de ballInRightHalfMs
+  // em types.ts.
+  let stats = state.stats;
+  {
+    const touchedNow = ball.lastTouchedBy;
+    const touches =
+      touchedNow && touchedNow !== prevLastTouchedBy
+        ? { ...stats.touches, [touchedNow]: (stats.touches[touchedNow] ?? 0) + 1 }
+        : stats.touches;
+    stats = {
+      ...stats,
+      touches,
+      ballInRightHalfMs: stats.ballInRightHalfMs + (ball.pos.x >= FIELD.WIDTH / 2 ? dt * 1000 : 0),
+      playingElapsedMs: stats.playingElapsedMs + dt * 1000,
+    };
+  }
+
   let { score, phase, phaseTimer, overtime, timeLeftMs, result } = state;
   phase = 'playing';
 
   if (scoringTeam) {
     score = { ...score, [scoringTeam]: score[scoringTeam] + 1 };
+
+    // Só credita o jogador se ele mesmo é do time que marcou — bola que
+    // entra por último toque de um jogador do time ADVERSÁRIO é gol
+    // contra: o placar do time sobe do mesmo jeito (`score` acima), mas
+    // ninguém ganha crédito individual por isso.
+    const scorer = ball.lastTouchedBy;
+    if (scorer && teamOf(scorer) === scoringTeam) {
+      stats = { ...stats, goalsByPlayer: { ...stats.goalsByPlayer, [scorer]: (stats.goalsByPlayer[scorer] ?? 0) + 1 } };
+    }
 
     const wonByGoals = !overtime && score[scoringTeam] >= state.matchSettings.goalsToWin;
     if (overtime || wonByGoals) {
@@ -186,6 +217,7 @@ function stepPlaying(
       timeLeftMs,
       result,
       score,
+      stats,
       players,
       ball,
     },
