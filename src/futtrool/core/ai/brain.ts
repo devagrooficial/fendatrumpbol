@@ -255,40 +255,73 @@ function findNearestOpponent(world: GameState, self: Player): Player {
 // a regra de "sem acesso privilegiado" (seção 5 da spec) é sobre enxergar
 // o ADVERSÁRIO sem o mesmo atraso que um humano teria, não sobre saber
 // onde o próprio time está, que qualquer jogador de verdade também sabe.
-function computeTeamRole(world: GameState, playerId: PlayerId): { isPrimaryResponder: boolean; rank: number; teamSize: number } {
+function computeTeamRole(world: GameState, playerId: PlayerId): { isPrimaryResponder: boolean; rank: number } {
   const teammateIds = world.roster[teamOf(playerId)];
   const byDistance = teammateIds
     .map((id) => ({ id, dist: length(sub(world.ball.pos, world.players[id]!.pos)) }))
     .sort((a, b) => a.dist - b.dist);
   const rank = byDistance.findIndex((entry) => entry.id === playerId);
-  return { isPrimaryResponder: rank === 0, rank, teamSize: teammateIds.length };
+  return { isPrimaryResponder: rank === 0, rank };
 }
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-// Faixa de Y (não persegue a bola, mas acompanha um pouco — 40%) pra quem
-// não é o respondente da vez, cada rank numa faixa diferente. A
-// PROFUNDIDADE (X) agora acompanha o andamento da jogada: time atacando
-// (bola perto do gol adversário) empurra a linha toda mais pra frente,
-// mais perto do meio-campo; defendendo, recua mais perto da própria área.
-// Antes a profundidade era fixa o tempo todo, então os companheiros
-// pareciam "perdidos"/parados mesmo com o time inteiro atacando do outro
-// lado do campo (reportado depois do fix de empilhamento na bola) — nunca
-// ultrapassa quase o meio-campo (MAX_DEPTH_FRAC), isso fica pro respondente
-// ir buscar sozinho.
-function holdingPosition(mySide: 'left' | 'right', rank: number, teamSize: number, ballPos: Vec2): Vec2 {
-  const MIN_DEPTH_FRAC = 0.18;
-  const MAX_DEPTH_FRAC = 0.46;
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+// Duas formações nomeadas pros companheiros que NÃO são o respondente da
+// vez (ver computeTeamRole) — cada uma dá um papel DIFERENTE por posição
+// (rank 1 = mais central/de cobertura, rank 2 = quem varia mais entre
+// defender e apoiar), em vez da faixa genérica de antes onde todo mundo
+// fazia a mesma coisa só que numa altura diferente (por isso pareciam
+// "perdidos" mesmo já acompanhando o andamento da jogada). `xFrac` é
+// fração do campo (0 = própria linha de fundo, 1 = linha de fundo
+// adversária) do ponto de vista de quem ataca pra x crescente — ver
+// holdingPosition pra o espelhamento por lado.
+//
+// "Linha defensiva": os dois ficam baixos e centrais, cobrindo a boca do
+// gol quando o time está se defendendo.
+type FormationSlot = { xFrac: number; yFrac: number };
+
+const DEFENSIVE_FORMATION: FormationSlot[] = [
+  { xFrac: 0.16, yFrac: 0.42 },
+  { xFrac: 0.16, yFrac: 0.62 },
+];
+
+// "Apoio ofensivo": um fica central e avançado (opção de passe/sobra perto
+// do ataque), o outro abre mais pro lado e sobe menos — dá pra "triangular"
+// em vez de todo mundo ir pro mesmo ponto. Nunca avança até a área de
+// verdade (fica bem aquém dos 2/3 do campo onde evaluateFsm libera o
+// estado 'attack') — isso continua sendo só trabalho do respondente.
+const ATTACKING_FORMATION: FormationSlot[] = [
+  { xFrac: 0.5, yFrac: 0.5 },
+  { xFrac: 0.4, yFrac: 0.22 },
+];
+
+// Interpola suavemente entre as duas formações conforme o andamento da
+// jogada (attackProgress 0=defendendo, 1=atacando) — troca gradual, sem
+// "teleporte" quando a bola cruza um limiar. `rank` 1, 2, ... vira slot 0,
+// 1 (se algum dia tiver time maior que os 2 slots definidos, repete o
+// padrão em vez de estourar índice).
+function holdingPosition(mySide: 'left' | 'right', rank: number, ballPos: Vec2): Vec2 {
   const attackProgress =
     mySide === 'left' ? clamp(ballPos.x / (FIELD.WIDTH / 2), 0, 1) : clamp((FIELD.WIDTH - ballPos.x) / (FIELD.WIDTH / 2), 0, 1);
-  const depthFrac = MIN_DEPTH_FRAC + attackProgress * (MAX_DEPTH_FRAC - MIN_DEPTH_FRAC);
-  const depthX = mySide === 'left' ? FIELD.WIDTH * depthFrac : FIELD.WIDTH * (1 - depthFrac);
 
-  const laneCount = Math.max(1, teamSize - 1); // exclui o respondente (rank 0)
-  const laneY = (FIELD.HEIGHT * rank) / (laneCount + 1);
-  return { x: depthX, y: laneY * 0.6 + ballPos.y * 0.4 };
+  const slotIndex = (rank - 1) % DEFENSIVE_FORMATION.length;
+  const defensiveSlot = DEFENSIVE_FORMATION[slotIndex]!;
+  const attackingSlot = ATTACKING_FORMATION[slotIndex]!;
+
+  const xFrac = lerp(defensiveSlot.xFrac, attackingSlot.xFrac, attackProgress);
+  const yFrac = lerp(defensiveSlot.yFrac, attackingSlot.yFrac, attackProgress);
+
+  const depthX = mySide === 'left' ? FIELD.WIDTH * xFrac : FIELD.WIDTH * (1 - xFrac);
+  const laneY = FIELD.HEIGHT * yFrac;
+  // Ainda acompanha um pouco o Y de verdade da bola (fica "de olho" na
+  // jogada), sem abandonar de vez o slot da formação.
+  return { x: depthX, y: laneY * 0.7 + ballPos.y * 0.3 };
 }
 
 export function decideCommand(
@@ -339,7 +372,7 @@ export function decideCommand(
         ? evaluateFsm(perceived, mySide, profile, rngState)
         : {
             fsmState: 'defend' as AiFsmState,
-            targetPoint: holdingPosition(mySide, role.rank, role.teamSize, perceived.ball.pos),
+            targetPoint: holdingPosition(mySide, role.rank, perceived.ball.pos),
             wantsToShoot: false,
             shootPower: 0,
             rngState,
