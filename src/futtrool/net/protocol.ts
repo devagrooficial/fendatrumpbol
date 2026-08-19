@@ -3,7 +3,7 @@
 // (mesma regra do GameState em core/types.ts), pra dar pra usar tanto no
 // navegador quanto no servidor Node sem depender de nada de DOM.
 
-import type { Command, GameState, MatchEvent, PlayerId, TeamId } from '../core/types';
+import type { Command, GameState, MatchEvent, MatchSettings, PlayerId, TeamId } from '../core/types';
 
 // Primeira mensagem que o cliente manda depois de conectar, decidindo como
 // quer ser pareado: fila aleatória (quickMatch), criar uma sala privada pra
@@ -12,10 +12,13 @@ import type { Command, GameState, MatchEvent, PlayerId, TeamId } from '../core/t
 // entrar numa sala existente (joinRoom). `startNow` força o início da
 // partida mesmo com a sala incompleta (times de mais de 1 jogador só —
 // slots vazios viram bot; ver server/src/index.ts). Depois de pareado, só
-// troca mensagens 'command'.
+// troca mensagens 'command'. `matchSettings` em quickMatch/createRoom é a
+// escolha de quem inicia a sala (duração/limite de gol) — mesma regra já
+// usada pro tamanho do time; quem entra via joinRoom herda o que a sala já
+// tem, não manda o próprio.
 export type ClientMessage =
-  | { type: 'quickMatch'; teamSize: number; name: string }
-  | { type: 'createRoom'; teamSize: number; name: string }
+  | { type: 'quickMatch'; teamSize: number; name: string; matchSettings: MatchSettings }
+  | { type: 'createRoom'; teamSize: number; name: string; matchSettings: MatchSettings }
   | { type: 'joinRoom'; code: string; name: string }
   | { type: 'startNow' }
   | { type: 'command'; command: Command };

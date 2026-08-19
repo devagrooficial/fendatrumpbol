@@ -142,6 +142,70 @@ html, body {
   color: #fdf6ff;
 }
 
+/* Menu principal: tela cheia de verdade (não um modal flutuando sobre o
+   campo) — cabeçalho fixo, lista de botões rolável no meio, rodapé fixo
+   com o espaço de anúncio 728x90. */
+.menu-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  background: #0b0b0e;
+  color: #fdf6ff;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+}
+
+.menu-screen--visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.menu-screen__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2.5rem 1.5rem 1.5rem;
+}
+
+.menu-screen__header {
+  text-align: center;
+  margin-bottom: 1.75rem;
+}
+
+.menu-screen__title {
+  margin: 0;
+  font-size: 2.4rem;
+  font-weight: 800;
+}
+
+.menu-screen__subtitle {
+  margin: 0.4rem 0 0.9rem;
+  font-size: 0.9rem;
+  color: rgba(253, 246, 255, 0.6);
+}
+
+.menu-screen__main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  width: min(28rem, 100%);
+}
+
+.menu-screen__footer {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  padding: 0.6rem 1rem calc(0.6rem + env(safe-area-inset-bottom, 0px));
+  background: rgba(20, 20, 26, 0.7);
+  border-top: 1px solid rgba(253, 246, 255, 0.08);
+}
+
 .screen__title {
   margin: 0;
   font-size: 1.7rem;
@@ -258,6 +322,31 @@ html, body {
 .screen__field-label {
   font-size: 0.75rem;
   color: rgba(253, 246, 255, 0.6);
+}
+
+/* Grupo de opções tipo pílula (duração/gols em MatchSettingsScreen, e
+   reaproveitável por qualquer outra escolha "N opções, uma selecionada"). */
+.pill-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.pill-options__button {
+  padding: 0.5rem 1rem;
+  font: 700 0.85rem 'Segoe UI', system-ui, sans-serif;
+  color: #fdf6ff;
+  background: rgba(253, 246, 255, 0.06);
+  border: 1px solid rgba(253, 246, 255, 0.15);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.pill-options__button--selected {
+  background: #e93d82;
+  border-color: #e93d82;
+  color: #0b0b0e;
 }
 
 .screen__field-row {
@@ -485,7 +574,8 @@ html, body {
 
 .ad-slot--menu-footer {
   width: 100%;
-  margin-top: 0.4rem;
+  max-width: 728px;
+  aspect-ratio: 728 / 90;
 }
 
 .ad-slot--loading-hero {

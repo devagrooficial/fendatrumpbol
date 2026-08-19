@@ -2,8 +2,8 @@
 // formação de kickoff e anti-degenerescência (seção 3.6). Puro — sem DOM,
 // sem Math.random, sem Date.now.
 
-import type { Ball, GameState, Player, PlayerId, TeamId, Vec2 } from './types';
-import { FIELD, PHYS, STALL } from './constants';
+import type { Ball, GameState, MatchSettings, Player, PlayerId, TeamId, Vec2 } from './types';
+import { FIELD, MATCH, PHYS, STALL } from './constants';
 import { createRngState } from './rng';
 import { length, normalize, scale } from './vec2';
 
@@ -97,7 +97,12 @@ export function createKickoffFormation(roster: Record<TeamId, PlayerId[]>): { pl
   return { players, ball: createKickoffBall() };
 }
 
-export function createMatchState(seed: number, phaseTimerMs: number, roster: Record<TeamId, PlayerId[]>): GameState {
+export function createMatchState(
+  seed: number,
+  phaseTimerMs: number,
+  roster: Record<TeamId, PlayerId[]>,
+  matchSettings: MatchSettings = { durationMs: MATCH.DURATION_MS, goalsToWin: MATCH.GOALS_TO_WIN },
+): GameState {
   const { players, ball } = createKickoffFormation(roster);
   return {
     tick: 0,
@@ -108,6 +113,7 @@ export function createMatchState(seed: number, phaseTimerMs: number, roster: Rec
     result: null,
     score: { teamA: 0, teamB: 0 },
     roster,
+    matchSettings,
     players,
     ball,
     rngState: createRngState(seed),

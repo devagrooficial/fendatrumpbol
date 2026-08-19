@@ -49,6 +49,16 @@ export type MatchPhase = 'kickoff' | 'playing' | 'goal' | 'ended';
 
 export type MatchResult = TeamId | 'draw';
 
+// Regras escolhidas ANTES da partida começar (spec original tinha isso
+// fixo — MATCH.DURATION_MS/GOALS_TO_WIN — virou escolha da pessoa, ver
+// progression/matchSettings.ts). Precisa estar no próprio GameState (não
+// só numa constante global) pelo mesmo motivo do roster: step() é uma
+// função pura, não pode depender de configuração externa escondida.
+export type MatchSettings = {
+  durationMs: number;
+  goalsToWin: number;
+};
+
 export type GameState = {
   tick: number;
   phase: MatchPhase;
@@ -67,6 +77,7 @@ export type GameState = {
   // `players`) porque a formação de kickoff (rules.ts) precisa saber quem
   // reposicionar sem depender de ordem de iteração de objeto.
   roster: Record<TeamId, PlayerId[]>;
+  matchSettings: MatchSettings;
   players: Record<PlayerId, Player>;
   ball: Ball;
   rngState: number;

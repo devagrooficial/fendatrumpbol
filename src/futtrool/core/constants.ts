@@ -87,6 +87,16 @@ export const MATCH = {
   FINAL_COUNTDOWN_MS: 20 * 1000,
 };
 
+// Opções de duração/limite de gol que a pessoa pode escolher antes da
+// partida (menu > "Duração e gols", ver progression/matchSettings.ts) —
+// DURATION_MS/GOALS_TO_WIN acima continuam sendo os valores PADRÃO (o que
+// vem selecionado a primeira vez que alguém abre o jogo).
+export const MATCH_SETTINGS_OPTIONS = {
+  durationsMs: [2 * 60 * 1000, 4 * 60 * 1000, 6 * 60 * 1000, 8 * 60 * 1000],
+  // Pedido explícito: "no mínimo 3 gols" — 3 é a opção mais baixa.
+  goalLimits: [3, 5, 7, 10],
+};
+
 // Anti-degenerescência (seção 3.6): bola "morta" num canto trava a partida.
 export const STALL = {
   SPEED_THRESHOLD: 8, // u/s

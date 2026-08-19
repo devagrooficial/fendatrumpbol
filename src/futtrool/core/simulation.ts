@@ -151,7 +151,7 @@ function stepPlaying(
   if (scoringTeam) {
     score = { ...score, [scoringTeam]: score[scoringTeam] + 1 };
 
-    const wonByGoals = !overtime && score[scoringTeam] >= MATCH.GOALS_TO_WIN;
+    const wonByGoals = !overtime && score[scoringTeam] >= state.matchSettings.goalsToWin;
     if (overtime || wonByGoals) {
       phase = 'ended';
       result = scoringTeam;
@@ -212,7 +212,7 @@ export function step(
       // nunca volta a ser 0 nesse ponto (ver stepPlaying: ou o relógio some
       // com o placar decidindo o jogo, ou vira prorrogação já com
       // OVERTIME_MS > 0).
-      const timeLeftMs = state.timeLeftMs > 0 ? state.timeLeftMs : MATCH.DURATION_MS;
+      const timeLeftMs = state.timeLeftMs > 0 ? state.timeLeftMs : state.matchSettings.durationMs;
       events.push({ type: 'kickoffEnded' });
       return { state: { ...state, tick: state.tick + 1, phase: 'playing', phaseTimer: 0, timeLeftMs }, events };
     }

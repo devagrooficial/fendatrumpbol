@@ -107,6 +107,19 @@ describe('gol em partida completa', () => {
     expect(result.state.result).toBe('teamB');
     expect(result.events).toContainEqual({ type: 'matchEnded', result: 'teamB' });
   });
+
+  it('respeita um limite de gol customizado (matchSettings), não o padrão fixo', () => {
+    let state = createMatchState(1, 1, ROSTER, { durationMs: MATCH.DURATION_MS, goalsToWin: 3 });
+    state = playThroughKickoff(state);
+    state = {
+      ...state,
+      score: { teamA: 0, teamB: 2 }, // 1 abaixo do limite CUSTOMIZADO (3), bem abaixo do padrão (7)
+      ball: { ...state.ball, pos: { x: 30, y: FIELD.HEIGHT / 2 }, vel: { x: -PHYS.BALL_MAX_SPEED, y: 0 } },
+    };
+    const result = step(state, commands(), DT);
+    expect(result.state.phase).toBe('ended');
+    expect(result.state.result).toBe('teamB');
+  });
 });
 
 describe('cronômetro e prorrogação', () => {

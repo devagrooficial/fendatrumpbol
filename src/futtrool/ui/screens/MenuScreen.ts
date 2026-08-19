@@ -4,6 +4,7 @@ import type { ProgressionState } from '../../progression/storage';
 import { isFullscreenActive, isFullscreenSupported, toggleFullscreen } from '../../fullscreen';
 import { supabase } from '../../../auth/supabaseClient';
 import { APELIDO_MAX_LENGTH, APELIDO_MIN_LENGTH, getApelido, setApelido } from '../../../auth/profile';
+import { createAdSlotImg, hideAdSlot, showAdSlot } from '../adSlot';
 
 export class MenuScreen {
   private readonly root: HTMLDivElement;
@@ -15,65 +16,80 @@ export class MenuScreen {
   private readonly nicknameInput: HTMLInputElement;
   private readonly nicknameSaveButton: HTMLButtonElement;
   private readonly nicknameStatus: HTMLParagraphElement;
+  private readonly footerAd: HTMLImageElement;
 
   constructor(
     onPlay: () => void,
     onPlayOnline: (teamSize: number) => void,
     onInviteFriend: (teamSize: number) => void,
     onReplays: () => void,
+    onMatchSettings: () => void,
     onNicknameSaved: (name: string) => void,
   ) {
     this.root = document.createElement('div');
-    this.root.className = 'screen';
+    this.root.className = 'menu-screen';
     this.root.innerHTML = `
-      <div class="screen__panel">
-        <h1 class="screen__title">${t('menu.title')}</h1>
-        <p class="screen__subtitle">${t('menu.subtitle')}</p>
-        <div class="screen__stat-row">
-          <span class="screen__stat-pill" data-level></span>
-          <span class="screen__stat-pill screen__stat-pill--coins" data-coins></span>
-        </div>
-        <button type="button" class="screen__button" data-play>${t('menu.play')}</button>
-        <div class="screen__button-row">
-          <button type="button" class="screen__button screen__button--secondary" data-play-online="1">${t('menu.playOnline1v1')}</button>
-          <button type="button" class="screen__button screen__button--secondary" data-invite-friend="1">${t('menu.inviteFriend1v1')}</button>
-        </div>
-        <div class="screen__button-row">
-          <button type="button" class="screen__button screen__button--secondary" data-play-online="2">${t('menu.playOnline2v2')}</button>
-          <button type="button" class="screen__button screen__button--secondary" data-invite-friend="2">${t('menu.inviteFriend2v2')}</button>
-        </div>
-        <div class="screen__button-row">
-          <button type="button" class="screen__button screen__button--secondary" data-play-online="3">${t('menu.playOnline3v3')}</button>
-          <button type="button" class="screen__button screen__button--secondary" data-invite-friend="3">${t('menu.inviteFriend3v3')}</button>
-        </div>
-        <div class="screen__button-row">
-          <button type="button" class="screen__button screen__button--secondary" data-inventory>${t('menu.inventory')}</button>
-          <button type="button" class="screen__button screen__button--secondary" data-shop>${t('menu.shop')}</button>
-        </div>
-        <button type="button" class="screen__button screen__button--secondary" data-replays>${t('menu.replays')}</button>
-        <p class="screen__placeholder-note" data-placeholder-note></p>
-        <div class="screen__field">
-          <label class="screen__field-label" for="futtrool-nickname">${t('menu.nickname.label')}</label>
-          <div class="screen__field-row">
-            <input
-              id="futtrool-nickname"
-              type="text"
-              class="screen__input"
-              data-nickname-input
-              maxlength="${APELIDO_MAX_LENGTH}"
-              minlength="${APELIDO_MIN_LENGTH}"
-              placeholder="${t('menu.nickname.placeholder')}"
-            />
-            <button type="button" class="screen__button screen__button--secondary" data-nickname-save>${t('menu.nickname.save')}</button>
+      <div class="menu-screen__scroll">
+        <header class="menu-screen__header">
+          <h1 class="menu-screen__title">${t('menu.title')}</h1>
+          <p class="menu-screen__subtitle">${t('menu.subtitle')}</p>
+          <div class="screen__stat-row">
+            <span class="screen__stat-pill" data-level></span>
+            <span class="screen__stat-pill screen__stat-pill--coins" data-coins></span>
           </div>
-          <p class="screen__placeholder-note" data-nickname-status></p>
-        </div>
-        <div class="screen__button-row">
-          <button type="button" class="screen__toggle" data-sound></button>
-          <button type="button" class="screen__toggle" data-fullscreen></button>
-        </div>
+        </header>
+        <main class="menu-screen__main">
+          <button type="button" class="screen__button" data-play>${t('menu.play')}</button>
+          <div class="screen__button-row">
+            <button type="button" class="screen__button screen__button--secondary" data-play-online="1">${t('menu.playOnline1v1')}</button>
+            <button type="button" class="screen__button screen__button--secondary" data-invite-friend="1">${t('menu.inviteFriend1v1')}</button>
+          </div>
+          <div class="screen__button-row">
+            <button type="button" class="screen__button screen__button--secondary" data-play-online="2">${t('menu.playOnline2v2')}</button>
+            <button type="button" class="screen__button screen__button--secondary" data-invite-friend="2">${t('menu.inviteFriend2v2')}</button>
+          </div>
+          <div class="screen__button-row">
+            <button type="button" class="screen__button screen__button--secondary" data-play-online="3">${t('menu.playOnline3v3')}</button>
+            <button type="button" class="screen__button screen__button--secondary" data-invite-friend="3">${t('menu.inviteFriend3v3')}</button>
+          </div>
+          <div class="screen__button-row">
+            <button type="button" class="screen__button screen__button--secondary" data-inventory>${t('menu.inventory')}</button>
+            <button type="button" class="screen__button screen__button--secondary" data-shop>${t('menu.shop')}</button>
+          </div>
+          <div class="screen__button-row">
+            <button type="button" class="screen__button screen__button--secondary" data-replays>${t('menu.replays')}</button>
+            <button type="button" class="screen__button screen__button--secondary" data-match-settings>${t('menu.matchSettings')}</button>
+          </div>
+          <p class="screen__placeholder-note" data-placeholder-note></p>
+          <div class="screen__field">
+            <label class="screen__field-label" for="futtrool-nickname">${t('menu.nickname.label')}</label>
+            <div class="screen__field-row">
+              <input
+                id="futtrool-nickname"
+                type="text"
+                class="screen__input"
+                data-nickname-input
+                maxlength="${APELIDO_MAX_LENGTH}"
+                minlength="${APELIDO_MIN_LENGTH}"
+                placeholder="${t('menu.nickname.placeholder')}"
+              />
+              <button type="button" class="screen__button screen__button--secondary" data-nickname-save>${t('menu.nickname.save')}</button>
+            </div>
+            <p class="screen__placeholder-note" data-nickname-status></p>
+          </div>
+          <div class="screen__button-row">
+            <button type="button" class="screen__toggle" data-sound></button>
+            <button type="button" class="screen__toggle" data-fullscreen></button>
+          </div>
+        </main>
       </div>
+      <footer class="menu-screen__footer">
+        <div data-footer-ad-slot></div>
+      </footer>
     `;
+
+    this.footerAd = createAdSlotImg('menu-footer', 'ad-slot ad-slot--menu-footer');
+    this.root.querySelector('[data-footer-ad-slot]')?.replaceWith(this.footerAd);
 
     const levelEl = this.root.querySelector<HTMLSpanElement>('[data-level]');
     const coinsEl = this.root.querySelector<HTMLSpanElement>('[data-coins]');
@@ -83,6 +99,7 @@ export class MenuScreen {
     const inventoryButton = this.root.querySelector<HTMLButtonElement>('[data-inventory]');
     const shopButton = this.root.querySelector<HTMLButtonElement>('[data-shop]');
     const replaysButton = this.root.querySelector<HTMLButtonElement>('[data-replays]');
+    const matchSettingsButton = this.root.querySelector<HTMLButtonElement>('[data-match-settings]');
     const placeholderNote = this.root.querySelector<HTMLParagraphElement>('[data-placeholder-note]');
     const soundToggle = this.root.querySelector<HTMLButtonElement>('[data-sound]');
     const fullscreenToggle = this.root.querySelector<HTMLButtonElement>('[data-fullscreen]');
@@ -98,6 +115,7 @@ export class MenuScreen {
       !inventoryButton ||
       !shopButton ||
       !replaysButton ||
+      !matchSettingsButton ||
       !placeholderNote ||
       !soundToggle ||
       !fullscreenToggle ||
@@ -140,6 +158,11 @@ export class MenuScreen {
     replaysButton.addEventListener('click', () => {
       Audio.click();
       onReplays();
+    });
+
+    matchSettingsButton.addEventListener('click', () => {
+      Audio.click();
+      onMatchSettings();
     });
 
     // Inventário/Loja: placeholder da entrega 1 (spec seção 7) — só avisa
@@ -268,11 +291,17 @@ export class MenuScreen {
   show(progression: ProgressionState): void {
     this.levelEl.textContent = t('menu.level', { level: progression.level });
     this.coinsEl.textContent = t('menu.coins', { coins: progression.coins });
-    this.root.classList.add('screen--visible');
+    this.root.classList.add('menu-screen--visible');
+    showAdSlot(this.footerAd, 'menu-footer');
     void this.refreshNicknameField();
   }
 
   hide(): void {
-    this.root.classList.remove('screen--visible');
+    this.root.classList.remove('menu-screen--visible');
+    hideAdSlot('menu-footer');
+  }
+
+  refreshAd(): void {
+    showAdSlot(this.footerAd, 'menu-footer');
   }
 }

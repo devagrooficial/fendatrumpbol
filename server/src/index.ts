@@ -16,8 +16,8 @@ import { step } from '../../src/futtrool/core/simulation';
 import { createMatchState } from '../../src/futtrool/core/rules';
 import { createAiState, decideCommand, type AiState } from '../../src/futtrool/core/ai/brain';
 import { AI_PROFILES } from '../../src/futtrool/core/ai/profiles';
-import { FIXED_TIMESTEP_S, MATCH } from '../../src/futtrool/core/constants';
-import type { Command, GameState, PlayerId, TeamId } from '../../src/futtrool/core/types';
+import { FIXED_TIMESTEP_S, MATCH, MATCH_SETTINGS_OPTIONS } from '../../src/futtrool/core/constants';
+import type { Command, GameState, MatchSettings, PlayerId, TeamId } from '../../src/futtrool/core/types';
 import type { ClientMessage, ServerMessage } from '../../src/futtrool/net/protocol';
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -37,6 +37,22 @@ function sanitizeName(raw: unknown): string {
   if (typeof raw !== 'string') return 'Jogador';
   const trimmed = raw.trim().slice(0, MAX_NAME_LENGTH);
   return trimmed.length > 0 ? trimmed : 'Jogador';
+}
+
+const DEFAULT_MATCH_SETTINGS: MatchSettings = { durationMs: MATCH.DURATION_MS, goalsToWin: MATCH.GOALS_TO_WIN };
+
+// Só aceita valores que batem com as opções oficiais (ver
+// core/constants.ts MATCH_SETTINGS_OPTIONS) — cai no padrão pra qualquer
+// coisa fora disso (cliente com bug, ou mensagem forjada).
+function sanitizeMatchSettings(raw: unknown): MatchSettings {
+  const value = raw as Partial<MatchSettings> | undefined;
+  const durationMs = MATCH_SETTINGS_OPTIONS.durationsMs.includes(value?.durationMs as number)
+    ? (value!.durationMs as number)
+    : DEFAULT_MATCH_SETTINGS.durationMs;
+  const goalsToWin = MATCH_SETTINGS_OPTIONS.goalLimits.includes(value?.goalsToWin as number)
+    ? (value!.goalsToWin as number)
+    : DEFAULT_MATCH_SETTINGS.goalsToWin;
+  return { durationMs, goalsToWin };
 }
 
 const NEUTRAL_COMMAND: Command = { tick: 0, move: { x: 0, y: 0 }, kickHeld: false, dash: false, boost: false };
@@ -96,11 +112,12 @@ class Room {
     roster: Record<TeamId, PlayerId[]>,
     humanSockets: Partial<Record<PlayerId, WebSocket>>,
     names: Record<PlayerId, string>,
+    matchSettings: MatchSettings,
     onEnded: () => void,
   ) {
     this.humanSockets = humanSockets;
     this.onEnded = onEnded;
-    this.state = createMatchState(Date.now(), MATCH.KICKOFF_COUNTDOWN_MS, roster);
+    this.state = createMatchState(Date.now(), MATCH.KICKOFF_COUNTDOWN_MS, roster, matchSettings);
 
     const allIds = [...roster.teamA, ...roster.teamB];
     this.commands = {} as Record<PlayerId, Command>;
@@ -186,6 +203,7 @@ type Lobby = {
   teamSize: number;
   code: string | null; // null = fila pública (quickMatch)
   entries: LobbyEntry[]; // ordem de entrada = ordem de slot
+  matchSettings: MatchSettings; // escolha de quem criou a sala/entrou na fila primeiro
 };
 
 const publicLobbies = new Map<number, Lobby>(); // teamSize -> lobby aberto agora
@@ -225,7 +243,7 @@ function startLobby(lobby: Lobby): void {
     names[id] = name;
   });
 
-  const room = new Room(roster, humanSockets, names, () => rooms.delete(room));
+  const room = new Room(roster, humanSockets, names, lobby.matchSettings, () => rooms.delete(room));
   rooms.add(room);
 }
 
@@ -280,7 +298,7 @@ wss.on('connection', (ws) => {
       const teamSize = clampTeamSize(parsed.teamSize);
       let lobby = publicLobbies.get(teamSize);
       if (!lobby) {
-        lobby = { teamSize, code: null, entries: [] };
+        lobby = { teamSize, code: null, entries: [], matchSettings: sanitizeMatchSettings(parsed.matchSettings) };
         publicLobbies.set(teamSize, lobby);
       }
       joinLobby(lobby, ws, sanitizeName(parsed.name));
@@ -290,7 +308,7 @@ wss.on('connection', (ws) => {
     if (parsed.type === 'createRoom') {
       const teamSize = clampTeamSize(parsed.teamSize);
       const code = generateRoomCode();
-      const lobby: Lobby = { teamSize, code, entries: [] };
+      const lobby: Lobby = { teamSize, code, entries: [], matchSettings: sanitizeMatchSettings(parsed.matchSettings) };
       privateLobbies.set(code, lobby);
       send(ws, { type: 'roomCreated', code });
       joinLobby(lobby, ws, sanitizeName(parsed.name));

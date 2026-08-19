@@ -68,5 +68,5 @@ export const SCREEN_AD_SIZES: Record<'scoreboard-sponsor' | 'loading-hero' | 'en
   'loading-hero': { w: 640, h: 360 },
   'endgame-banner': { w: 640, h: 100 },
   'replay-lower-third': { w: 400, h: 80 },
-  'menu-footer': { w: 400, h: 90 },
+  'menu-footer': { w: 728, h: 90 }, // tamanho padrão IAB "leaderboard"
 };

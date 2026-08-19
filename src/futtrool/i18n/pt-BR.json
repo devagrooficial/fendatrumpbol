@@ -9,6 +9,7 @@
   "menu.playOnline3v3": "3v3 Online (beta)",
   "menu.inviteFriend3v3": "3v3 Chamar amigo",
   "menu.replays": "Replays",
+  "menu.matchSettings": "Duração e gols",
   "menu.inventory": "Inventário",
   "menu.shop": "Loja",
   "menu.comingSoon": "Em breve",
@@ -36,6 +37,14 @@
   "difficulty.lenda": "Lenda",
   "difficulty.lenda.desc": "Quase imbatível",
   "difficulty.back": "Voltar",
+
+  "matchSettings.title": "Duração e gols",
+  "matchSettings.subtitle": "Vale pras próximas partidas",
+  "matchSettings.duration.label": "Duração da partida",
+  "matchSettings.duration.value": "{minutes} min",
+  "matchSettings.goals.label": "Gols pra vencer antes do tempo acabar",
+  "matchSettings.goals.value": "{goals} gols",
+  "matchSettings.back": "Voltar",
 
   "matchmaking.title": "Buscando partida...",
   "matchmaking.subtitle": "1v1 casual · {difficulty}",

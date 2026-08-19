@@ -17,7 +17,7 @@ import { assignFictionalNames } from './ui/botNames';
 import { FIXED_TIMESTEP_S, MATCH, REPLAY } from './core/constants';
 import { step } from './core/simulation';
 import { createMatchState } from './core/rules';
-import type { Command, GameState, MatchEvent, PlayerId, TeamId } from './core/types';
+import type { Command, GameState, MatchEvent, MatchSettings, PlayerId, TeamId } from './core/types';
 import { teamOf } from './core/types';
 import { OnlineClient } from './net/onlineClient';
 import { KeyboardInput } from './input/keyboard';
@@ -34,6 +34,8 @@ import { EndGameScreen } from './ui/screens/EndGameScreen';
 import { SavedReplaysScreen } from './ui/screens/SavedReplaysScreen';
 import { ReplayOverlay } from './ui/ReplayOverlay';
 import { ProgressionStore, type ProgressionState } from './progression/storage';
+import { MatchSettingsStore } from './progression/matchSettings';
+import { MatchSettingsScreen } from './ui/screens/MatchSettingsScreen';
 import { applyXp, calculateMatchReward, splitExitReward, xpForLevel, type MatchOutcome } from './progression/economy';
 import { supabase } from '../auth/supabaseClient';
 import { getApelido } from '../auth/profile';
@@ -107,7 +109,7 @@ function getP1Command(tick: number): Command {
 // existe de verdade a partir de 'match').
 // ---------------------------------------------------------------------------
 
-type AppScreen = 'menu' | 'difficulty' | 'matchmaking' | 'onlineMatchmaking' | 'match' | 'endgame' | 'replays' | 'watchingReplay';
+type AppScreen = 'menu' | 'difficulty' | 'matchSettings' | 'matchmaking' | 'onlineMatchmaking' | 'match' | 'endgame' | 'replays' | 'watchingReplay';
 let appScreen: AppScreen = 'menu';
 let chosenDifficulty: AiDifficulty = 'profissional';
 
@@ -141,6 +143,9 @@ let pendingOnlineEvents: MatchEvent[] = [];
 
 const progressionStore = new ProgressionStore();
 let progression: ProgressionState = progressionStore.load();
+
+const matchSettingsStore = new MatchSettingsStore();
+let matchSettings = matchSettingsStore.load();
 
 // Apelido escolhido pelo jogador (até 12 caracteres, ver src/auth/profile.ts)
 // pra aparecer no lugar de "Você" no replay e na tela de fim de jogo. Cache
@@ -182,7 +187,7 @@ const replayPlayer = new ReplayPlayer();
 // mostrando o estado ao vivo parado, não o replay tocando.
 let inGoalReplayWindow = false;
 
-let state: GameState = createMatchState(1, MATCH.KICKOFF_COUNTDOWN_MS, SOLO_ROSTER);
+let state: GameState = createMatchState(1, MATCH.KICKOFF_COUNTDOWN_MS, SOLO_ROSTER, matchSettings);
 let aiState: AiState = createAiState(Date.now());
 let prevPhase = state.phase;
 
@@ -193,6 +198,7 @@ function hideAllScreens(): void {
   endGameScreen.hide();
   savedReplaysScreen.hide();
   replayOverlay.hide();
+  matchSettingsScreen.hide();
 }
 
 function goToMenu(): void {
@@ -205,6 +211,18 @@ function goToDifficulty(): void {
   appScreen = 'difficulty';
   hideAllScreens();
   difficultyScreen.show();
+}
+
+function goToMatchSettings(): void {
+  appScreen = 'matchSettings';
+  hideAllScreens();
+  matchSettingsScreen.show(matchSettings);
+}
+
+function onMatchSettingsChange(updated: MatchSettings): MatchSettings {
+  matchSettings = updated;
+  matchSettingsStore.save(matchSettings);
+  return matchSettings;
 }
 
 function goToMatchmaking(difficulty: AiDifficulty): void {
@@ -230,7 +248,7 @@ function resetMatchVisuals(): void {
 }
 
 function startMatch(): void {
-  state = createMatchState(Date.now(), MATCH.KICKOFF_COUNTDOWN_MS, SOLO_ROSTER);
+  state = createMatchState(Date.now(), MATCH.KICKOFF_COUNTDOWN_MS, SOLO_ROSTER, matchSettings);
   aiState = createAiState(Date.now());
   onlineMode = false;
   localPlayerId = 'teamA-0';
@@ -291,8 +309,8 @@ function connectOnline(mode: OnlineJoinMode): void {
 
   client.connect({
     onOpen: () => {
-      if (mode.kind === 'quickMatch') client.requestQuickMatch(mode.teamSize, displayName);
-      else if (mode.kind === 'createRoom') client.requestCreateRoom(mode.teamSize, displayName);
+      if (mode.kind === 'quickMatch') client.requestQuickMatch(mode.teamSize, displayName, matchSettings);
+      else if (mode.kind === 'createRoom') client.requestCreateRoom(mode.teamSize, displayName, matchSettings);
       else client.requestJoinRoom(mode.code, displayName);
     },
     onAssigned: (playerId, names) => {
@@ -458,10 +476,11 @@ function onReplayOverlaySkipOrBack(): void {
   state = { ...state, phaseTimer: 0 };
 }
 
-const menuScreen = new MenuScreen(goToDifficulty, goToOnlineMatchmaking, goToCreateOnlineRoom, goToReplaysList, (name) => {
+const menuScreen = new MenuScreen(goToDifficulty, goToOnlineMatchmaking, goToCreateOnlineRoom, goToReplaysList, goToMatchSettings, (name) => {
   displayName = name;
 });
 const difficultyScreen = new DifficultyScreen(goToMatchmaking, goToMenu);
+const matchSettingsScreen = new MatchSettingsScreen(onMatchSettingsChange, goToMenu);
 const matchmakingScreen = new MatchmakingScreen(onMatchmakingCancel, onMatchmakingStartNow);
 const endGameScreen = new EndGameScreen(goToMenu, claimRematchBonus);
 const savedReplaysScreen = new SavedReplaysScreen(watchSavedReplay, deleteSavedReplay, goToMenu);
@@ -490,6 +509,7 @@ adsConfigPromise
   .then((config) => {
     adManager.load(config);
     if (appScreen === 'matchmaking') matchmakingScreen.refreshAd();
+    if (appScreen === 'menu') menuScreen.refreshAd();
   })
   .catch((err) => {
     if (import.meta.env.DEV) console.error('[futtrool] falha ao carregar ads.config.json', err);

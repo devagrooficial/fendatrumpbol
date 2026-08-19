@@ -3,7 +3,7 @@
 // eventos que o servidor manda de volta. Zero física/regras aqui: quem
 // decide o que acontece é sempre o servidor (ver server/src/index.ts).
 
-import type { Command, GameState, MatchEvent, PlayerId, TeamId } from '../core/types';
+import type { Command, GameState, MatchEvent, MatchSettings, PlayerId, TeamId } from '../core/types';
 import type { ClientMessage, ServerMessage } from './protocol';
 
 // wss:// em produção (o site já é HTTPS, então ws:// puro seria bloqueado
@@ -61,12 +61,12 @@ export class OnlineClient {
     this.ws.send(JSON.stringify(message));
   }
 
-  requestQuickMatch(teamSize: number, name: string): void {
-    this.sendRaw({ type: 'quickMatch', teamSize, name });
+  requestQuickMatch(teamSize: number, name: string, matchSettings: MatchSettings): void {
+    this.sendRaw({ type: 'quickMatch', teamSize, name, matchSettings });
   }
 
-  requestCreateRoom(teamSize: number, name: string): void {
-    this.sendRaw({ type: 'createRoom', teamSize, name });
+  requestCreateRoom(teamSize: number, name: string, matchSettings: MatchSettings): void {
+    this.sendRaw({ type: 'createRoom', teamSize, name, matchSettings });
   }
 
   requestJoinRoom(code: string, name: string): void {
