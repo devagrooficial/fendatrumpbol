@@ -31,6 +31,13 @@ const MAX_TEAM_SIZE = 3; // 1v1, 2v2 e 3v3 — pra ir além é só subir esse n�
 const HEARTBEAT_INTERVAL_MS = Number(process.env.HEARTBEAT_INTERVAL_MS ?? 15000);
 const ROOM_CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // sem O/0, I/1, L (ambíguos ao ditar/digitar)
 const ROOM_CODE_LENGTH = 6;
+const MAX_NAME_LENGTH = 20;
+
+function sanitizeName(raw: unknown): string {
+  if (typeof raw !== 'string') return 'Jogador';
+  const trimmed = raw.trim().slice(0, MAX_NAME_LENGTH);
+  return trimmed.length > 0 ? trimmed : 'Jogador';
+}
 
 const NEUTRAL_COMMAND: Command = { tick: 0, move: { x: 0, y: 0 }, kickHeld: false, dash: false, boost: false };
 // Dificuldade dos bots que preenchem time incompleto (ver Lobby.start) —
@@ -85,7 +92,12 @@ class Room {
   private readonly botStates = new Map<PlayerId, AiState>();
   private readonly onEnded: () => void;
 
-  constructor(roster: Record<TeamId, PlayerId[]>, humanSockets: Partial<Record<PlayerId, WebSocket>>, onEnded: () => void) {
+  constructor(
+    roster: Record<TeamId, PlayerId[]>,
+    humanSockets: Partial<Record<PlayerId, WebSocket>>,
+    names: Record<PlayerId, string>,
+    onEnded: () => void,
+  ) {
     this.humanSockets = humanSockets;
     this.onEnded = onEnded;
     this.state = createMatchState(Date.now(), MATCH.KICKOFF_COUNTDOWN_MS, roster);
@@ -97,7 +109,7 @@ class Room {
       this.commands[id] = NEUTRAL_COMMAND;
       const ws = humanSockets[id];
       if (ws) {
-        send(ws, { type: 'assigned', playerId: id });
+        send(ws, { type: 'assigned', playerId: id, names });
         // Substitui o listener de 'message' que o pareamento usava (join
         // request) — a partir daqui só interessa 'command'.
         ws.removeAllListeners('message');
@@ -168,10 +180,12 @@ class Room {
 // bot).
 // ---------------------------------------------------------------------------
 
+type LobbyEntry = { ws: WebSocket; name: string };
+
 type Lobby = {
   teamSize: number;
   code: string | null; // null = fila pública (quickMatch)
-  sockets: WebSocket[]; // ordem de entrada = ordem de slot
+  entries: LobbyEntry[]; // ordem de entrada = ordem de slot
 };
 
 const publicLobbies = new Map<number, Lobby>(); // teamSize -> lobby aberto agora
@@ -185,12 +199,12 @@ function lobbyCapacity(lobby: Lobby): number {
 
 function broadcastLobbyUpdate(lobby: Lobby): void {
   const filled: Record<TeamId, number> = { teamA: 0, teamB: 0 };
-  lobby.sockets.forEach((_, i) => {
+  lobby.entries.forEach((_, i) => {
     const id = slotToPlayerId(lobby.teamSize, i);
     filled[id.startsWith('teamA') ? 'teamA' : 'teamB']++;
   });
   const message: ServerMessage = { type: 'lobbyUpdate', teamSize: lobby.teamSize, filled, capacity: lobbyCapacity(lobby) };
-  for (const ws of lobby.sockets) send(ws, message);
+  for (const { ws } of lobby.entries) send(ws, message);
 }
 
 function removeLobbyFromPools(lobby: Lobby): void {
@@ -200,22 +214,25 @@ function removeLobbyFromPools(lobby: Lobby): void {
 
 function startLobby(lobby: Lobby): void {
   removeLobbyFromPools(lobby);
-  for (const ws of lobby.sockets) socketLobby.delete(ws);
+  for (const { ws } of lobby.entries) socketLobby.delete(ws);
 
   const roster = buildRoster(lobby.teamSize);
   const humanSockets: Partial<Record<PlayerId, WebSocket>> = {};
-  lobby.sockets.forEach((ws, i) => {
-    humanSockets[slotToPlayerId(lobby.teamSize, i)] = ws;
+  const names = {} as Record<PlayerId, string>;
+  lobby.entries.forEach(({ ws, name }, i) => {
+    const id = slotToPlayerId(lobby.teamSize, i);
+    humanSockets[id] = ws;
+    names[id] = name;
   });
 
-  const room = new Room(roster, humanSockets, () => rooms.delete(room));
+  const room = new Room(roster, humanSockets, names, () => rooms.delete(room));
   rooms.add(room);
 }
 
-function joinLobby(lobby: Lobby, ws: WebSocket): void {
-  lobby.sockets.push(ws);
+function joinLobby(lobby: Lobby, ws: WebSocket, name: string): void {
+  lobby.entries.push({ ws, name });
   socketLobby.set(ws, lobby);
-  if (lobby.sockets.length >= lobbyCapacity(lobby)) {
+  if (lobby.entries.length >= lobbyCapacity(lobby)) {
     startLobby(lobby);
   } else {
     broadcastLobbyUpdate(lobby);
@@ -239,9 +256,9 @@ function removeFromPendingLobby(ws: WebSocket): void {
   const lobby = socketLobby.get(ws);
   if (!lobby) return;
   socketLobby.delete(ws);
-  const idx = lobby.sockets.indexOf(ws);
-  if (idx !== -1) lobby.sockets.splice(idx, 1);
-  if (lobby.sockets.length === 0) removeLobbyFromPools(lobby);
+  const idx = lobby.entries.findIndex((entry) => entry.ws === ws);
+  if (idx !== -1) lobby.entries.splice(idx, 1);
+  if (lobby.entries.length === 0) removeLobbyFromPools(lobby);
   else broadcastLobbyUpdate(lobby);
 }
 
@@ -263,20 +280,20 @@ wss.on('connection', (ws) => {
       const teamSize = clampTeamSize(parsed.teamSize);
       let lobby = publicLobbies.get(teamSize);
       if (!lobby) {
-        lobby = { teamSize, code: null, sockets: [] };
+        lobby = { teamSize, code: null, entries: [] };
         publicLobbies.set(teamSize, lobby);
       }
-      joinLobby(lobby, ws);
+      joinLobby(lobby, ws, sanitizeName(parsed.name));
       return;
     }
 
     if (parsed.type === 'createRoom') {
       const teamSize = clampTeamSize(parsed.teamSize);
       const code = generateRoomCode();
-      const lobby: Lobby = { teamSize, code, sockets: [] };
+      const lobby: Lobby = { teamSize, code, entries: [] };
       privateLobbies.set(code, lobby);
       send(ws, { type: 'roomCreated', code });
-      joinLobby(lobby, ws);
+      joinLobby(lobby, ws, sanitizeName(parsed.name));
       return;
     }
 
@@ -286,7 +303,7 @@ wss.on('connection', (ws) => {
         send(ws, { type: 'roomNotFound' });
         return;
       }
-      joinLobby(lobby, ws);
+      joinLobby(lobby, ws, sanitizeName(parsed.name));
       return;
     }
 

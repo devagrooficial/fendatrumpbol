@@ -4,12 +4,9 @@
 // aqui (mesma regra do renderer, seção 13 decisão 5).
 
 import type { GameState } from '../core/types';
-import { FIELD, MATCH } from '../core/constants';
+import { MATCH } from '../core/constants';
 import { THEME } from '../render/theme';
 import { t } from '../i18n';
-import { adManager } from '../ads/adManager';
-import { SCREEN_AD_SIZES } from '../ads/slots';
-import type { Camera } from '../render/camera';
 
 function formatClock(ms: number): string {
   const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
@@ -42,7 +39,6 @@ export function renderMatchHud(
   _viewportH: number,
   state: GameState,
   aiFsmLabel: string,
-  camera: Camera,
 ): void {
   const centerX = viewportW / 2;
 
@@ -98,18 +94,10 @@ export function renderMatchHud(
     ctx.fillText(t('hud.goal'), centerX, 100);
   }
 
-  // scoreboard-sponsor (seção 10.1): "Apresentado por", logo abaixo do
-  // placar. Em telas curtas (celular deitado), o campo às vezes preenche
-  // quase a viewport inteira (câmera com pouca ou nenhuma margem acima da
-  // linha de fundo — ver FIELD.APRON_X em camera.ts) e essa faixa fixa em
-  // pixels de tela passava a cair POR CIMA do gramado, sobrepondo a
-  // jogada sem nunca sair de lá (é isso que o Mateus reportou como
-  // "travado"). Só desenha se sobrar margem de verdade entre o HUD e a
-  // linha de fundo do campo.
-  const sponsorY = 106;
-  const sponsorSize = SCREEN_AD_SIZES['scoreboard-sponsor'];
-  const fieldTopY = camera.worldToScreen(FIELD.WIDTH / 2, 0).y;
-  if (fieldTopY > sponsorY + sponsorSize.h + 6) {
-    adManager.renderScreenRect(ctx, 'scoreboard-sponsor', centerX - sponsorSize.w / 2, sponsorY, sponsorSize.w, sponsorSize.h);
-  }
+  // scoreboard-sponsor (seção 10.1) removido de propósito — mesmo depois
+  // de resolver a sobreposição com o gramado (margem em fieldTopY), o
+  // Mateus reportou de novo que a faixa "Apresentado por..." não deveria
+  // aparecer no meio da partida de jeito nenhum. Fica só como possibilidade
+  // futura (o slot 'scoreboard-sponsor' continua existindo em ads/slots.ts,
+  // só não é mais desenhado aqui).
 }

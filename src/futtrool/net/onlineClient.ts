@@ -20,7 +20,7 @@ export type OnlineClientCallbacks = {
   // Só depois disso o socket aceita send() — é aqui que o chamador manda o
   // "modo" de pareamento (requestQuickMatch/requestCreateRoom/requestJoinRoom).
   onOpen: () => void;
-  onAssigned: (playerId: PlayerId) => void;
+  onAssigned: (playerId: PlayerId, names: Record<PlayerId, string>) => void;
   onRoomCreated: (code: string) => void;
   onRoomNotFound: () => void;
   onLobbyUpdate: (teamSize: number, filled: Record<TeamId, number>, capacity: number) => void;
@@ -45,7 +45,7 @@ export class OnlineClient {
       } catch {
         return;
       }
-      if (message.type === 'assigned') callbacks.onAssigned(message.playerId);
+      if (message.type === 'assigned') callbacks.onAssigned(message.playerId, message.names);
       else if (message.type === 'roomCreated') callbacks.onRoomCreated(message.code);
       else if (message.type === 'roomNotFound') callbacks.onRoomNotFound();
       else if (message.type === 'lobbyUpdate') callbacks.onLobbyUpdate(message.teamSize, message.filled, message.capacity);
@@ -61,16 +61,16 @@ export class OnlineClient {
     this.ws.send(JSON.stringify(message));
   }
 
-  requestQuickMatch(teamSize: number): void {
-    this.sendRaw({ type: 'quickMatch', teamSize });
+  requestQuickMatch(teamSize: number, name: string): void {
+    this.sendRaw({ type: 'quickMatch', teamSize, name });
   }
 
-  requestCreateRoom(teamSize: number): void {
-    this.sendRaw({ type: 'createRoom', teamSize });
+  requestCreateRoom(teamSize: number, name: string): void {
+    this.sendRaw({ type: 'createRoom', teamSize, name });
   }
 
-  requestJoinRoom(code: string): void {
-    this.sendRaw({ type: 'joinRoom', code });
+  requestJoinRoom(code: string, name: string): void {
+    this.sendRaw({ type: 'joinRoom', code, name });
   }
 
   requestStartNow(): void {

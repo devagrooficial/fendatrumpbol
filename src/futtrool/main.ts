@@ -13,6 +13,7 @@ import {
 } from './render/renderer';
 import { THEME } from './render/theme';
 import { Fx } from './render/fx';
+import { assignFictionalNames } from './ui/botNames';
 import { FIXED_TIMESTEP_S, MATCH, REPLAY } from './core/constants';
 import { step } from './core/simulation';
 import { createMatchState } from './core/rules';
@@ -123,6 +124,16 @@ let onlineMode = false;
 const SOLO_ROSTER: Record<TeamId, PlayerId[]> = { teamA: ['teamA-0'], teamB: ['teamB-0'] };
 let localPlayerId: PlayerId = 'teamA-0';
 let onlineClient: OnlineClient | null = null;
+// Apelido de cada humano de verdade na partida online atual (inclusive eu
+// mesmo — mas pro meu próprio rótulo sempre uso `displayName` direto, não
+// esse mapa). Quem não aparece aqui é bot — ver nameFor() e ui/botNames.ts.
+// Some sozinho quando volta pro modo offline (startMatch), senão um nome
+// de uma partida online anterior poderia vazar pro rótulo do bot da IA.
+let humanNames: Record<PlayerId, string> = {};
+// Apelido fictício de cada BOT da partida atual — calculado uma vez só
+// (não a cada frame) quando a partida começa, cobrindo todo mundo que não
+// está em `humanNames` (ver startMatch/startOnlineMatch e nameFor()).
+let botNameAssignment: Record<PlayerId, string> = {};
 // Eventos ('goal', 'kick' etc.) que chegaram do servidor desde o último
 // frame local — updateMatch() drena essa fila a cada chamada, do mesmo
 // jeito que consumiria o retorno de step() no modo offline.
@@ -147,6 +158,15 @@ async function refreshDisplayName(): Promise<void> {
   if (apelido) displayName = apelido;
 }
 void refreshDisplayName();
+
+// Nome a mostrar em cima de QUALQUER jogador em campo — eu mesmo uso
+// `displayName` (apelido de verdade); outro humano de verdade (2v2/3v3
+// online) usa o apelido que ele mandou ao entrar (humanNames); quem sobra
+// é bot e ganha um apelido fictício estável (ui/botNames.ts).
+function nameFor(playerId: PlayerId): string {
+  if (playerId === localPlayerId) return displayName;
+  return humanNames[playerId] ?? botNameAssignment[playerId] ?? playerId;
+}
 
 // Guardado no fim da partida (ver economy.ts: splitExitReward) — só é
 // creditado se a pessoa escolher "Mais uma!" em vez de "Sair". Zerado
@@ -178,7 +198,6 @@ function hideAllScreens(): void {
 function goToMenu(): void {
   appScreen = 'menu';
   hideAllScreens();
-  adManager.trackDomSlotHidden('scoreboard-sponsor');
   menuScreen.show(progression);
 }
 
@@ -208,7 +227,6 @@ function resetMatchVisuals(): void {
   prevPhase = state.phase;
   appScreen = 'match';
   hideAllScreens();
-  adManager.trackDomSlotShown('scoreboard-sponsor');
 }
 
 function startMatch(): void {
@@ -216,6 +234,8 @@ function startMatch(): void {
   aiState = createAiState(Date.now());
   onlineMode = false;
   localPlayerId = 'teamA-0';
+  humanNames = {}; // sem isso, um apelido de uma partida online anterior podia vazar pro rótulo do bot da IA
+  botNameAssignment = assignFictionalNames(['teamB-0']);
   resetMatchVisuals();
 }
 
@@ -234,6 +254,11 @@ function startOnlineMatch(initialState: GameState, playerId: PlayerId): void {
   state = initialState;
   onlineMode = true;
   localPlayerId = playerId;
+  // humanNames já está preenchido nesse ponto (onAssigned sempre chega
+  // antes do primeiro 'state' — ver server/src/index.ts) — quem sobra do
+  // roster é bot.
+  const botIds = (Object.keys(initialState.players) as PlayerId[]).filter((id) => !(id in humanNames));
+  botNameAssignment = assignFictionalNames(botIds);
   resetMatchVisuals();
 }
 
@@ -266,12 +291,13 @@ function connectOnline(mode: OnlineJoinMode): void {
 
   client.connect({
     onOpen: () => {
-      if (mode.kind === 'quickMatch') client.requestQuickMatch(mode.teamSize);
-      else if (mode.kind === 'createRoom') client.requestCreateRoom(mode.teamSize);
-      else client.requestJoinRoom(mode.code);
+      if (mode.kind === 'quickMatch') client.requestQuickMatch(mode.teamSize, displayName);
+      else if (mode.kind === 'createRoom') client.requestCreateRoom(mode.teamSize, displayName);
+      else client.requestJoinRoom(mode.code, displayName);
     },
-    onAssigned: (playerId) => {
+    onAssigned: (playerId, names) => {
       assignedPlayerId = playerId;
+      humanNames = names;
     },
     onRoomCreated: (code) => {
       matchmakingScreen.showRoomCreated(code, buildRoomLink(code));
@@ -615,7 +641,7 @@ function renderPlayerWithBadge(player: Parameters<typeof renderPlayer>[2], color
 // de jogo e o replay de gol têm rótulo, ver renderReplaySnapshot).
 function renderAllPlayers(): void {
   for (const player of Object.values(state.players)) {
-    renderPlayerWithBadge(player, player.teamId === 'teamA' ? THEME.TEAM_1 : THEME.TEAM_2);
+    renderPlayerWithBadge(player, player.teamId === 'teamA' ? THEME.TEAM_1 : THEME.TEAM_2, nameFor(player.id));
   }
 }
 
@@ -633,13 +659,10 @@ function renderBallWithSkin(ball: Parameters<typeof renderBall>[2]): void {
 
 function renderReplaySnapshot(snapshot: ReplaySnapshot): void {
   const ball = ballFromSnapshot(snapshot);
-  // Só rotula "eu" (localPlayerId) — pra qualquer outro jogador (bot ou
-  // humano de verdade em partida online/2v2) não dá pra saber um nome
-  // confiável só a partir do snapshot, então fica sem rótulo.
   for (const id of Object.keys(snapshot.players) as PlayerId[]) {
     const player = playerFromSnapshot(id, snapshot);
     const color = player.teamId === 'teamA' ? THEME.TEAM_1 : THEME.TEAM_2;
-    renderPlayerWithBadge(player, color, id === localPlayerId ? displayName : undefined);
+    renderPlayerWithBadge(player, color, nameFor(id));
   }
   renderBallWithSkin(ball);
 }
@@ -676,7 +699,7 @@ function render(_alpha: number): void {
 
   renderParticles(ctx, camera, fx.getParticles());
   renderGoalFlash(ctx, window.innerWidth, window.innerHeight, fx.getFlashAlpha());
-  renderMatchHud(ctx, window.innerWidth, window.innerHeight, state, `IA: ${aiState.fsmState}`, camera);
+  renderMatchHud(ctx, window.innerWidth, window.innerHeight, state, `IA: ${aiState.fsmState}`);
 
   if (touch && appScreen === 'match' && !inGoalReplayWindow) {
     const localPlayer = state.players[localPlayerId]!;

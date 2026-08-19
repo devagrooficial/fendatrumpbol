@@ -14,14 +14,18 @@ import type { Command, GameState, MatchEvent, PlayerId, TeamId } from '../core/t
 // slots vazios viram bot; ver server/src/index.ts). Depois de pareado, só
 // troca mensagens 'command'.
 export type ClientMessage =
-  | { type: 'quickMatch'; teamSize: number }
-  | { type: 'createRoom'; teamSize: number }
-  | { type: 'joinRoom'; code: string }
+  | { type: 'quickMatch'; teamSize: number; name: string }
+  | { type: 'createRoom'; teamSize: number; name: string }
+  | { type: 'joinRoom'; code: string; name: string }
   | { type: 'startNow' }
   | { type: 'command'; command: Command };
 
 export type ServerMessage =
-  | { type: 'assigned'; playerId: PlayerId }
+  // `names` cobre TODOS os slots com humano de verdade nessa partida
+  // (inclusive quem está recebendo a mensagem) — quem não aparece aqui é
+  // bot (o cliente gera um apelido fictício localmente pra esses, ver
+  // ui/botNames.ts).
+  | { type: 'assigned'; playerId: PlayerId; names: Record<PlayerId, string> }
   | { type: 'roomCreated'; code: string }
   | { type: 'roomNotFound' }
   // Progresso de uma sala (privada ou fila pública) ainda esperando gente —
