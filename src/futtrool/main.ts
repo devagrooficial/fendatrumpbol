@@ -232,7 +232,17 @@ function startOnlineMatch(initialState: GameState, playerId: PlayerId): void {
   resetMatchVisuals();
 }
 
-function goToOnlineMatchmaking(): void {
+// Como pedir pareamento pro servidor depois que a conexão abrir (ver
+// OnlineClientCallbacks.onOpen) — fila aleatória, criar sala privada pra
+// convidar alguém específico, ou entrar numa sala existente via link/código
+// (ver server/src/index.ts e protocol.ts).
+type OnlineJoinMode = { kind: 'quickMatch' } | { kind: 'createRoom' } | { kind: 'joinRoom'; code: string };
+
+function buildRoomLink(code: string): string {
+  return `${window.location.origin}${window.location.pathname}?room=${code}`;
+}
+
+function connectOnline(mode: OnlineJoinMode): void {
   appScreen = 'onlineMatchmaking';
   hideAllScreens();
   matchmakingScreen.showOnline();
@@ -243,8 +253,23 @@ function goToOnlineMatchmaking(): void {
   let matchStarted = false;
 
   client.connect({
+    onOpen: () => {
+      if (mode.kind === 'quickMatch') client.requestQuickMatch();
+      else if (mode.kind === 'createRoom') client.requestCreateRoom();
+      else client.requestJoinRoom(mode.code);
+    },
     onAssigned: (playerId) => {
       assignedPlayerId = playerId;
+    },
+    onRoomCreated: (code) => {
+      matchmakingScreen.showRoomCreated(code, buildRoomLink(code));
+    },
+    onRoomNotFound: () => {
+      onlineClient = null;
+      goToMenuWithNotice(t('matchmaking.online.roomNotFound'));
+    },
+    onQueueStatus: (waitingCount) => {
+      matchmakingScreen.setQueueStatus(waitingCount);
     },
     onState: (newState, events) => {
       if (!matchStarted) {
@@ -270,6 +295,18 @@ function goToOnlineMatchmaking(): void {
       }
     },
   });
+}
+
+function goToOnlineMatchmaking(): void {
+  connectOnline({ kind: 'quickMatch' });
+}
+
+function goToCreateOnlineRoom(): void {
+  connectOnline({ kind: 'createRoom' });
+}
+
+function joinOnlineRoom(code: string): void {
+  connectOnline({ kind: 'joinRoom', code });
 }
 
 function endMatchFlow(): void {
@@ -376,7 +413,7 @@ function onReplayOverlaySkipOrBack(): void {
   state = { ...state, phaseTimer: 0 };
 }
 
-const menuScreen = new MenuScreen(goToDifficulty, goToOnlineMatchmaking, goToReplaysList, (name) => {
+const menuScreen = new MenuScreen(goToDifficulty, goToOnlineMatchmaking, goToCreateOnlineRoom, goToReplaysList, (name) => {
   displayName = name;
 });
 const difficultyScreen = new DifficultyScreen(goToMatchmaking, goToMenu);
@@ -385,7 +422,18 @@ const endGameScreen = new EndGameScreen(goToMenu, claimRematchBonus);
 const savedReplaysScreen = new SavedReplaysScreen(watchSavedReplay, deleteSavedReplay, goToMenu);
 const replayOverlay = new ReplayOverlay(reactToGoalReplay, saveGoalReplay, onReplayOverlaySkipOrBack);
 
-goToMenu();
+// Convite por link (?room=CODE, ver menu.inviteFriend/goToCreateOnlineRoom):
+// quem abre o link cai direto na sala, sem passar pelo menu. Limpa o
+// parâmetro da URL logo em seguida — recarregar a página não deve tentar
+// entrar na mesma sala de novo (o código já foi consumido ou pode ter
+// expirado).
+const inviteRoomCode = new URLSearchParams(window.location.search).get('room');
+if (inviteRoomCode) {
+  window.history.replaceState(null, '', window.location.pathname);
+  joinOnlineRoom(inviteRoomCode);
+} else {
+  goToMenu();
+}
 
 // O fetch quase sempre ainda está em voo quando o menu já apareceu (a
 // primeira tela do app) — sem isso, o loading-hero da matchmaking ficaria
@@ -625,6 +673,8 @@ if (import.meta.env.DEV) {
     goToDifficulty,
     goToMatchmaking,
     goToOnlineMatchmaking,
+    goToCreateOnlineRoom,
+    joinOnlineRoom,
     startMatch,
     goToReplaysList,
     getP1Command: () => getP1Command(state.tick),

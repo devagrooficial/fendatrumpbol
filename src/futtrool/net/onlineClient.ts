@@ -17,7 +17,13 @@ export function getWsUrl(): string {
 }
 
 export type OnlineClientCallbacks = {
+  // Só depois disso o socket aceita send() — é aqui que o chamador manda o
+  // "modo" de pareamento (requestQuickMatch/requestCreateRoom/requestJoinRoom).
+  onOpen: () => void;
   onAssigned: (playerId: PlayerId) => void;
+  onRoomCreated: (code: string) => void;
+  onRoomNotFound: () => void;
+  onQueueStatus: (waitingCount: number) => void;
   onState: (state: GameState, events: MatchEvent[]) => void;
   onOpponentLeft: () => void;
   onClose: () => void;
@@ -30,6 +36,8 @@ export class OnlineClient {
     const ws = new WebSocket(getWsUrl());
     this.ws = ws;
 
+    ws.addEventListener('open', () => callbacks.onOpen());
+
     ws.addEventListener('message', (ev) => {
       let message: ServerMessage;
       try {
@@ -38,6 +46,9 @@ export class OnlineClient {
         return;
       }
       if (message.type === 'assigned') callbacks.onAssigned(message.playerId);
+      else if (message.type === 'roomCreated') callbacks.onRoomCreated(message.code);
+      else if (message.type === 'roomNotFound') callbacks.onRoomNotFound();
+      else if (message.type === 'queueStatus') callbacks.onQueueStatus(message.waitingCount);
       else if (message.type === 'state') callbacks.onState(message.state, message.events);
       else if (message.type === 'opponentLeft') callbacks.onOpponentLeft();
     });
@@ -45,10 +56,25 @@ export class OnlineClient {
     ws.addEventListener('close', () => callbacks.onClose());
   }
 
-  sendCommand(command: Command): void {
+  private sendRaw(message: ClientMessage): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    const message: ClientMessage = { type: 'command', command };
     this.ws.send(JSON.stringify(message));
+  }
+
+  requestQuickMatch(): void {
+    this.sendRaw({ type: 'quickMatch' });
+  }
+
+  requestCreateRoom(): void {
+    this.sendRaw({ type: 'createRoom' });
+  }
+
+  requestJoinRoom(code: string): void {
+    this.sendRaw({ type: 'joinRoom', code });
+  }
+
+  sendCommand(command: Command): void {
+    this.sendRaw({ type: 'command', command });
   }
 
   disconnect(): void {

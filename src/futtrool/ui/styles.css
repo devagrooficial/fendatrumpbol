@@ -248,6 +248,13 @@ html, body {
   text-align: left;
 }
 
+/* `display: flex` acima tem a mesma especificidade do `[hidden] { display:
+   none }` do navegador — sem isso, o atributo `hidden` é ignorado (a regra
+   de classe, por vir depois no cascade, ganha do UA stylesheet). */
+.screen__field[hidden] {
+  display: none;
+}
+
 .screen__field-label {
   font-size: 0.75rem;
   color: rgba(253, 246, 255, 0.6);

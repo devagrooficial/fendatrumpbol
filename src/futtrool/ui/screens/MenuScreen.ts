@@ -19,6 +19,7 @@ export class MenuScreen {
   constructor(
     onPlay: () => void,
     onPlayOnline: () => void,
+    onInviteFriend: () => void,
     onReplays: () => void,
     onNicknameSaved: (name: string) => void,
   ) {
@@ -33,7 +34,10 @@ export class MenuScreen {
           <span class="screen__stat-pill screen__stat-pill--coins" data-coins></span>
         </div>
         <button type="button" class="screen__button" data-play>${t('menu.play')}</button>
-        <button type="button" class="screen__button screen__button--secondary" data-play-online>${t('menu.playOnline')}</button>
+        <div class="screen__button-row">
+          <button type="button" class="screen__button screen__button--secondary" data-play-online>${t('menu.playOnline')}</button>
+          <button type="button" class="screen__button screen__button--secondary" data-invite-friend>${t('menu.inviteFriend')}</button>
+        </div>
         <div class="screen__button-row">
           <button type="button" class="screen__button screen__button--secondary" data-inventory>${t('menu.inventory')}</button>
           <button type="button" class="screen__button screen__button--secondary" data-shop>${t('menu.shop')}</button>
@@ -67,6 +71,7 @@ export class MenuScreen {
     const coinsEl = this.root.querySelector<HTMLSpanElement>('[data-coins]');
     const playButton = this.root.querySelector<HTMLButtonElement>('[data-play]');
     const playOnlineButton = this.root.querySelector<HTMLButtonElement>('[data-play-online]');
+    const inviteFriendButton = this.root.querySelector<HTMLButtonElement>('[data-invite-friend]');
     const inventoryButton = this.root.querySelector<HTMLButtonElement>('[data-inventory]');
     const shopButton = this.root.querySelector<HTMLButtonElement>('[data-shop]');
     const replaysButton = this.root.querySelector<HTMLButtonElement>('[data-replays]');
@@ -81,6 +86,7 @@ export class MenuScreen {
       !coinsEl ||
       !playButton ||
       !playOnlineButton ||
+      !inviteFriendButton ||
       !inventoryButton ||
       !shopButton ||
       !replaysButton ||
@@ -105,6 +111,11 @@ export class MenuScreen {
     playOnlineButton.addEventListener('click', () => {
       Audio.click();
       onPlayOnline();
+    });
+
+    inviteFriendButton.addEventListener('click', () => {
+      Audio.click();
+      onInviteFriend();
     });
 
     playButton.addEventListener('click', () => {
