@@ -80,6 +80,11 @@ export const MATCH = {
   KICKOFF_COUNTDOWN_MS: 1500,
   OVERTIME_MS: 60 * 1000,
   MAX_STEPS_PER_FRAME: 5, // evita espiral da morte com a aba em background
+  // Aviso de reta final (pedido depois de jogar: "queria um aviso de que
+  // está chegando aos 20 segundos finais") — dispara uma vez quando
+  // timeLeftMs cruza esse limiar (ver simulation.ts: evento
+  // 'finalCountdown'), vale tanto pro tempo normal quanto pra prorrogação.
+  FINAL_COUNTDOWN_MS: 20 * 1000,
 };
 
 // Anti-degenerescência (seção 3.6): bola "morta" num canto trava a partida.

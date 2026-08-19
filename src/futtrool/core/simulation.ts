@@ -242,6 +242,9 @@ export function step(
     if (after.score[teamId] !== before.score[teamId]) events.push({ type: 'goal', scorer: teamId });
   });
   if (before.overtime !== after.overtime && after.overtime) events.push({ type: 'overtimeStarted' });
+  if (before.timeLeftMs > MATCH.FINAL_COUNTDOWN_MS && after.timeLeftMs <= MATCH.FINAL_COUNTDOWN_MS) {
+    events.push({ type: 'finalCountdown' });
+  }
   if (after.phase === 'ended' && after.result) events.push({ type: 'matchEnded', result: after.result });
 
   return { state: { ...after, tick: after.tick + 1 }, events };

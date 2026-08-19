@@ -59,8 +59,15 @@ export function renderMatchHud(
   drawPips(ctx, centerX - 4, 48, state.score.teamA, THEME.TEAM_1, -1);
   drawPips(ctx, centerX + 4, 48, state.score.teamB, THEME.TEAM_2, 1);
 
+  // Reta final (últimos MATCH.FINAL_COUNTDOWN_MS, 20s): relógio muda pra
+  // cor de alerta o tempo todo, mais um banner curto (3s reais) bem na
+  // hora que cruza o limiar — o SOM desse instante já dispara junto (ver
+  // core/simulation.ts: evento 'finalCountdown'), aqui é só o visual, sem
+  // precisar de timer próprio porque timeLeftMs já conta em tempo real.
+  const isFinalCountdown = state.phase === 'playing' && state.timeLeftMs <= MATCH.FINAL_COUNTDOWN_MS;
+
   ctx.font = "600 14px 'Segoe UI', system-ui, sans-serif";
-  ctx.fillStyle = 'rgba(253, 246, 255, 0.75)';
+  ctx.fillStyle = isFinalCountdown ? THEME.ACCENT_PRIMARY : 'rgba(253, 246, 255, 0.75)';
   ctx.textAlign = 'center';
   ctx.fillText(formatClock(state.timeLeftMs), centerX, 70);
 
@@ -68,6 +75,13 @@ export function renderMatchHud(
     ctx.font = "700 12px 'Segoe UI', system-ui, sans-serif";
     ctx.fillStyle = THEME.ACCENT_PRIMARY;
     ctx.fillText(t('hud.overtime'), centerX, 88);
+  }
+
+  if (isFinalCountdown && state.timeLeftMs > MATCH.FINAL_COUNTDOWN_MS - 3000) {
+    ctx.font = "800 20px 'Segoe UI', system-ui, sans-serif";
+    ctx.fillStyle = THEME.ACCENT_PRIMARY;
+    ctx.textAlign = 'center';
+    ctx.fillText(t('hud.finalCountdown'), centerX, 100);
   }
 
   // Ping/região — placeholder estático (seção 7: "real na entrega 2").

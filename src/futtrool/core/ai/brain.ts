@@ -264,16 +264,31 @@ function computeTeamRole(world: GameState, playerId: PlayerId): { isPrimaryRespo
   return { isPrimaryResponder: rank === 0, rank, teamSize: teammateIds.length };
 }
 
-// Faixa de Y fixa (não persegue a bola) pra quem não é o respondente da
-// vez — cada rank (1º não-respondente, 2º, ...) pega uma faixa diferente,
-// puxada um pouco em direção ao Y da bola (fica "de olho" na jogada sem
-// abandonar a própria faixa e sem competir pelo mesmo ponto que o
-// respondente já está indo buscar).
-function holdingPosition(mySide: 'left' | 'right', rank: number, teamSize: number, ballY: number): Vec2 {
-  const depthX = mySide === 'left' ? FIELD.WIDTH * 0.32 : FIELD.WIDTH * 0.68;
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+// Faixa de Y (não persegue a bola, mas acompanha um pouco — 40%) pra quem
+// não é o respondente da vez, cada rank numa faixa diferente. A
+// PROFUNDIDADE (X) agora acompanha o andamento da jogada: time atacando
+// (bola perto do gol adversário) empurra a linha toda mais pra frente,
+// mais perto do meio-campo; defendendo, recua mais perto da própria área.
+// Antes a profundidade era fixa o tempo todo, então os companheiros
+// pareciam "perdidos"/parados mesmo com o time inteiro atacando do outro
+// lado do campo (reportado depois do fix de empilhamento na bola) — nunca
+// ultrapassa quase o meio-campo (MAX_DEPTH_FRAC), isso fica pro respondente
+// ir buscar sozinho.
+function holdingPosition(mySide: 'left' | 'right', rank: number, teamSize: number, ballPos: Vec2): Vec2 {
+  const MIN_DEPTH_FRAC = 0.18;
+  const MAX_DEPTH_FRAC = 0.46;
+  const attackProgress =
+    mySide === 'left' ? clamp(ballPos.x / (FIELD.WIDTH / 2), 0, 1) : clamp((FIELD.WIDTH - ballPos.x) / (FIELD.WIDTH / 2), 0, 1);
+  const depthFrac = MIN_DEPTH_FRAC + attackProgress * (MAX_DEPTH_FRAC - MIN_DEPTH_FRAC);
+  const depthX = mySide === 'left' ? FIELD.WIDTH * depthFrac : FIELD.WIDTH * (1 - depthFrac);
+
   const laneCount = Math.max(1, teamSize - 1); // exclui o respondente (rank 0)
   const laneY = (FIELD.HEIGHT * rank) / (laneCount + 1);
-  return { x: depthX, y: laneY * 0.7 + ballY * 0.3 };
+  return { x: depthX, y: laneY * 0.6 + ballPos.y * 0.4 };
 }
 
 export function decideCommand(
@@ -324,7 +339,7 @@ export function decideCommand(
         ? evaluateFsm(perceived, mySide, profile, rngState)
         : {
             fsmState: 'defend' as AiFsmState,
-            targetPoint: holdingPosition(mySide, role.rank, role.teamSize, perceived.ball.pos.y),
+            targetPoint: holdingPosition(mySide, role.rank, role.teamSize, perceived.ball.pos),
             wantsToShoot: false,
             shootPower: 0,
             rngState,

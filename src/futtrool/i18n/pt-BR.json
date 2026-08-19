@@ -56,6 +56,7 @@
   "hud.goal": "GOL!",
   "hud.goalScoredBy": "{name} marcou!",
   "hud.overtime": "Prorrogação",
+  "hud.finalCountdown": "ÚLTIMOS 20 SEGUNDOS!",
   "hud.you": "Você",
   "hud.menu": "Menu",
   "hud.ping": "BR · -- ms",

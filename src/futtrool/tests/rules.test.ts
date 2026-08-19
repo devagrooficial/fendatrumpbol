@@ -151,6 +151,35 @@ describe('cronômetro e prorrogação', () => {
     expect(result.state.phase).toBe('ended');
     expect(result.state.result).toBe('teamB');
   });
+
+  it('dispara finalCountdown uma vez ao cruzar MATCH.FINAL_COUNTDOWN_MS restantes', () => {
+    let state = createMatchState(1, 1, ROSTER);
+    state = playThroughKickoff(state);
+    state = { ...state, timeLeftMs: MATCH.FINAL_COUNTDOWN_MS + 5 };
+
+    const crossing = step(state, commands(), 0.01); // 10ms > os 5ms que faltavam pro limiar
+    expect(crossing.state.timeLeftMs).toBeLessThanOrEqual(MATCH.FINAL_COUNTDOWN_MS);
+    expect(crossing.events).toContainEqual({ type: 'finalCountdown' });
+
+    // Não dispara de novo no tick seguinte, já abaixo do limiar.
+    const after = step(crossing.state, commands(), DT);
+    expect(after.events).not.toContainEqual({ type: 'finalCountdown' });
+  });
+
+  it('não dispara finalCountdown fora da fase playing (ex.: durante o gol)', () => {
+    let state = createMatchState(1, 1, ROSTER);
+    state = playThroughKickoff(state);
+    state = {
+      ...state,
+      timeLeftMs: MATCH.FINAL_COUNTDOWN_MS + 5,
+      ball: { ...state.ball, pos: { x: 30, y: FIELD.HEIGHT / 2 }, vel: { x: -PHYS.BALL_MAX_SPEED, y: 0 } },
+    };
+    // Esse chute vira gol no mesmo tick — phase muda pra 'goal' antes do
+    // relógio ter chance de cruzar o limiar via stepPlaying.
+    const result = step(state, commands(), DT);
+    expect(result.state.phase).toBe('goal');
+    expect(result.events).not.toContainEqual({ type: 'finalCountdown' });
+  });
 });
 
 describe('anti-degenerescência', () => {

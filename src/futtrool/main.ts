@@ -575,6 +575,9 @@ function updateMatch(dt: number): void {
       case 'kickoffEnded':
         Audio.whistleStart();
         break;
+      case 'finalCountdown':
+        Audio.finalCountdown();
+        break;
       case 'matchEnded':
         Audio.whistleEnd();
         break;

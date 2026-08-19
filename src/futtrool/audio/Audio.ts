@@ -170,6 +170,14 @@ class AudioEngine {
   click(): void {
     this.tone(500, 0.05, 'square', 0.08);
   }
+
+  // Reta final (20s restantes) — dois bipes curtos e agudos, tipo alarme
+  // de cronômetro, bem diferente de qualquer outro efeito do jogo (nenhum
+  // outro usa dois tons idênticos em sequência rápida).
+  finalCountdown(): void {
+    this.tone(880, 0.1, 'square', 0.12);
+    this.tone(880, 0.1, 'square', 0.12, undefined, 0.16);
+  }
 }
 
 export const Audio = new AudioEngine();

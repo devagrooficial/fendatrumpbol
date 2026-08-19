@@ -81,6 +81,9 @@ export type MatchEvent =
   | { type: 'kickoffEnded' }
   | { type: 'overtimeStarted' }
   | { type: 'matchEnded'; result: MatchResult }
+  // Dispara uma vez quando timeLeftMs cruza MATCH.FINAL_COUNTDOWN_MS (20s) —
+  // tempo normal e prorrogação disparam de novo, cada um na sua vez.
+  | { type: 'finalCountdown' }
   // Eventos de M5 (FX/áudio) — `pos`/`dir` em unidades de mundo, não pixels.
   | { type: 'kick'; playerId: PlayerId; pos: Vec2; dir: Vec2; charge: number }
   | { type: 'dash'; playerId: PlayerId }
