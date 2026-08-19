@@ -38,6 +38,9 @@ import { MatchSettingsStore } from './progression/matchSettings';
 import { MatchSettingsScreen } from './ui/screens/MatchSettingsScreen';
 import { AvatarColorStore } from './progression/avatarColor';
 import { AvatarColorScreen } from './ui/screens/AvatarColorScreen';
+import { TournamentWaitingScreen } from './ui/screens/TournamentWaitingScreen';
+import { TournamentBracketScreen } from './ui/screens/TournamentBracketScreen';
+import type { TournamentSnapshot } from './net/protocol';
 import { applyXp, calculateMatchReward, splitExitReward, xpForLevel, type MatchOutcome } from './progression/economy';
 import { supabase } from '../auth/supabaseClient';
 import { getApelido } from '../auth/profile';
@@ -114,7 +117,19 @@ function getP1Command(tick: number): Command {
 // existe de verdade a partir de 'match').
 // ---------------------------------------------------------------------------
 
-type AppScreen = 'menu' | 'difficulty' | 'matchSettings' | 'avatarColor' | 'matchmaking' | 'onlineMatchmaking' | 'match' | 'endgame' | 'replays' | 'watchingReplay';
+type AppScreen =
+  | 'menu'
+  | 'difficulty'
+  | 'matchSettings'
+  | 'avatarColor'
+  | 'matchmaking'
+  | 'onlineMatchmaking'
+  | 'tournamentWaiting'
+  | 'tournamentBracket'
+  | 'match'
+  | 'endgame'
+  | 'replays'
+  | 'watchingReplay';
 let appScreen: AppScreen = 'menu';
 let chosenDifficulty: AiDifficulty = 'profissional';
 
@@ -149,6 +164,19 @@ let botNameAssignment: Record<PlayerId, string> = {};
 // frame local — updateMatch() drena essa fila a cada chamada, do mesmo
 // jeito que consumiria o retorno de step() no modo offline.
 let pendingOnlineEvents: MatchEvent[] = [];
+
+// Campeonato: a MESMA conexão WS toca várias partidas em sequência
+// (quartas -> semi -> final), diferente de quickMatch/createRoom (1
+// partida só por conexão) — precisa de estado próprio pra saber, quando a
+// partida atual acaba, se volta pra tela da CHAVE (torneio) em vez da
+// tela de fim de jogo comum (ver endTournamentMatchFlow). `lastTournament*`
+// guarda o retrato mais recente pra a tela do bracket nunca ficar em
+// branco no intervalo entre "minha partida acabou" e "o servidor mandou o
+// bracket atualizado" (ver connectTournament: os dois chegam em mensagens
+// separadas, quase juntas mas não atômicas).
+let inTournamentMatch = false;
+let lastTournamentSnapshot: TournamentSnapshot | null = null;
+let lastTournamentYourSlot: number | null = null;
 
 const progressionStore = new ProgressionStore();
 let progression: ProgressionState = progressionStore.load();
@@ -224,6 +252,8 @@ function hideAllScreens(): void {
   replayOverlay.hide();
   matchSettingsScreen.hide();
   avatarColorScreen.hide();
+  tournamentWaitingScreen.hide();
+  tournamentBracketScreen.hide();
 }
 
 function goToMenu(): void {
@@ -310,11 +340,27 @@ function startOnlineMatch(initialState: GameState, playerId: PlayerId): void {
   state = initialState;
   onlineMode = true;
   localPlayerId = playerId;
+  inTournamentMatch = false;
   // humanNames já está preenchido nesse ponto (onAssigned sempre chega
   // antes do primeiro 'state' — ver server/src/index.ts) — quem sobra do
   // roster é bot.
   const botIds = (Object.keys(initialState.players) as PlayerId[]).filter((id) => !(id in humanNames));
   botNameAssignment = assignFictionalNames(botIds);
+  resetMatchVisuals();
+}
+
+// Igual startOnlineMatch, mas marca `inTournamentMatch` — o único jeito
+// de saber, quando essa partida acabar, que precisa voltar pra tela da
+// CHAVE (ver updateMatch) em vez da tela normal de fim de jogo. Partida
+// de torneio nunca tem bot (ver server/src/index.ts) — não precisa
+// calcular botNameAssignment de verdade, mas mantém vazio por segurança
+// (nameFor() já cai pro próprio playerId se não achar ninguém).
+function startTournamentMatchPlay(initialState: GameState, playerId: PlayerId): void {
+  state = initialState;
+  onlineMode = true;
+  localPlayerId = playerId;
+  inTournamentMatch = true;
+  botNameAssignment = {};
   resetMatchVisuals();
 }
 
@@ -415,6 +461,110 @@ function joinOnlineRoom(code: string): void {
   connectOnline({ kind: 'joinRoom', code });
 }
 
+// Campeonato: MESMA conexão WS toca a fila de espera, a chave em si, e
+// TODAS as partidas do meu lado da chave em sequência (quartas -> semi ->
+// final), diferente de connectOnline (1 partida só) — por isso os
+// callbacks de partida (onAssigned/onState) aqui não terminam a conexão
+// quando uma partida acaba, só resetam `matchStarted` pra próxima 'state'
+// iniciar a partida seguinte quando ela vier.
+async function connectTournament(): Promise<void> {
+  appScreen = 'tournamentWaiting';
+  hideAllScreens();
+  tournamentWaitingScreen.show(progression);
+
+  const authToken = supabase ? (await supabase.auth.getSession()).data.session?.access_token : undefined;
+
+  const client = new OnlineClient();
+  onlineClient = client;
+  let assignedPlayerId: PlayerId | null = null;
+  let matchStarted = false;
+
+  client.connect({
+    onOpen: () => {
+      client.requestTournamentJoin(displayName, avatarColor, authToken);
+    },
+    onAssigned: (playerId, names, colors) => {
+      assignedPlayerId = playerId;
+      humanNames = names;
+      humanColors = colors;
+      matchStarted = false; // próxima 'state' que chegar é o começo de uma partida NOVA
+    },
+    onRoomCreated: () => {},
+    onRoomNotFound: () => {},
+    onLobbyUpdate: () => {},
+    onState: (newState, events) => {
+      if (!matchStarted) {
+        matchStarted = true;
+        startTournamentMatchPlay(newState, assignedPlayerId ?? 'teamA-0');
+        return;
+      }
+      state = newState;
+      pendingOnlineEvents.push(...events);
+    },
+    onOpponentLeft: () => {
+      // No campeonato, o adversário saindo no meio é W.O. a MEU favor —
+      // o servidor já resolve isso e manda um 'tournament' atualizado me
+      // colocando como vencedor da vaga; a partida em si já para (Room
+      // encerra do lado do servidor), então só ignora aqui (diferente do
+      // multiplayer comum, não é motivo pra voltar pro menu).
+    },
+    onBanned: () => {
+      onlineClient = null;
+      onlineMode = false;
+      goToMenuWithNotice(t('matchmaking.online.banned'));
+    },
+    onClose: () => {
+      if (appScreen === 'tournamentWaiting' || appScreen === 'tournamentBracket') {
+        onlineClient = null;
+        onlineMode = false;
+        goToMenuWithNotice(t('matchmaking.online.connectionFailed'));
+      }
+    },
+    onTournament: (tournament, yourSlot) => {
+      lastTournamentSnapshot = tournament;
+      lastTournamentYourSlot = yourSlot;
+
+      if (tournament.status === 'waiting') {
+        appScreen = 'tournamentWaiting';
+        hideAllScreens();
+        tournamentWaitingScreen.show(progression);
+        tournamentWaitingScreen.update(tournament);
+        return;
+      }
+
+      // 'active' ou 'completed': se a partida atual já estiver rolando
+      // (appScreen === 'match'), não pisa na tela — 'assigned'/'state' já
+      // cuidam da transição pra partida seguinte quando ela começar.
+      if (appScreen === 'match') return;
+      appScreen = 'tournamentBracket';
+      hideAllScreens();
+      tournamentBracketScreen.show(tournament, yourSlot);
+    },
+    onTournamentFull: () => {
+      onlineClient = null;
+      goToMenuWithNotice(t('tournament.full'));
+    },
+  });
+}
+
+function goToTournament(): void {
+  void connectTournament();
+}
+
+// "Sair" tanto na tela de espera (ainda não começou, é só desistir da
+// fila) quanto no botão "Voltar" da tela do bracket (torneio já rolando —
+// nesse caso É desistência de verdade: o servidor trata a desconexão como
+// W.O. pro adversário na vaga pendente, ver server/src/index.ts
+// watchTournamentDisconnect). Mesmo botão físico nas duas telas, mesma
+// ação — sair da conexão sempre volta pro menu.
+function leaveTournament(): void {
+  onlineClient?.disconnect();
+  onlineClient = null;
+  lastTournamentSnapshot = null;
+  lastTournamentYourSlot = null;
+  goToMenu();
+}
+
 function endMatchFlow(): void {
   // A partir daqui `update()` para de chamar `fx.update(dt)` (só roda com
   // appScreen === 'match'), então o shakeTimer do último gol ficaria
@@ -493,6 +643,57 @@ function endMatchFlow(): void {
   });
 }
 
+// Igual endMatchFlow (XP/moedas/estatística), mas sem a tela de fim de
+// jogo normal — depois de uma partida de CAMPEONATO, volta pra tela da
+// chave (não faz sentido "Mais uma!"/"Sair" no meio de um torneio; quem
+// quiser sair de verdade usa o botão "Voltar" da própria tela do bracket,
+// que já é tratado como desistência — ver onTournamentBracketBack). Toda
+// a moeda ganha é creditada na hora (sem a divisão exitCoins/bonusCoins
+// de "Mais uma!", que não existe aqui).
+function endTournamentMatchFlow(): void {
+  fx.reset();
+
+  const myTeam = teamOf(localPlayerId);
+  const opponentTeam: TeamId = myTeam === 'teamA' ? 'teamB' : 'teamA';
+  const outcome: MatchOutcome = state.result === myTeam ? 'win' : state.result === opponentTeam ? 'loss' : 'draw';
+  const reward = calculateMatchReward(outcome, state.score[myTeam], progression.winStreak);
+  const levelAfter = applyXp(
+    { level: progression.level, levelXp: progression.levelXp, xpToNextLevel: xpForLevel(progression.level) },
+    reward.xp,
+  );
+
+  progression = {
+    coins: progression.coins + reward.coins,
+    level: levelAfter.level,
+    levelXp: levelAfter.levelXp,
+    winStreak: reward.newStreak,
+  };
+  progressionStore.save(progression);
+
+  const rightHalfPct = state.stats.playingElapsedMs > 0 ? (state.stats.ballInRightHalfMs / state.stats.playingElapsedMs) * 100 : 0;
+  const attackPctByTeam: Record<TeamId, number> = { teamA: rightHalfPct, teamB: 100 - rightHalfPct };
+
+  void matchStatsStore.save({
+    teamSize: state.roster.teamA.length,
+    online: true,
+    outcome,
+    scoreMine: state.score[myTeam],
+    scoreOpponent: state.score[opponentTeam],
+    goals: state.stats.goalsByPlayer[localPlayerId] ?? 0,
+    touches: state.stats.touches[localPlayerId] ?? 0,
+    attackPct: attackPctByTeam[myTeam],
+  });
+
+  inTournamentMatch = false;
+  appScreen = 'tournamentBracket';
+  hideAllScreens();
+  // Mostra o retrato mais recente que já temos (pode estar 1 partida
+  // "atrasado" por uma fração de segundo — o servidor manda o 'tournament'
+  // atualizado logo em seguida, ver connectTournament) em vez de deixar a
+  // tela em branco nesse intervalo.
+  if (lastTournamentSnapshot) tournamentBracketScreen.show(lastTournamentSnapshot, lastTournamentYourSlot);
+}
+
 function claimRematchBonus(): void {
   if (pendingRematchBonus > 0) {
     progression = { ...progression, coins: progression.coins + pendingRematchBonus };
@@ -553,12 +754,23 @@ function onReplayOverlaySkipOrBack(): void {
   state = { ...state, phaseTimer: 0 };
 }
 
-const menuScreen = new MenuScreen(goToDifficulty, goToOnlineMatchmaking, goToCreateOnlineRoom, goToReplaysList, goToMatchSettings, goToAvatarColor, (name) => {
-  displayName = name;
-});
+const menuScreen = new MenuScreen(
+  goToDifficulty,
+  goToOnlineMatchmaking,
+  goToCreateOnlineRoom,
+  goToReplaysList,
+  goToMatchSettings,
+  goToAvatarColor,
+  goToTournament,
+  (name) => {
+    displayName = name;
+  },
+);
 const difficultyScreen = new DifficultyScreen(goToMatchmaking, goToMenu);
 const matchSettingsScreen = new MatchSettingsScreen(onMatchSettingsChange, goToMenu);
 const avatarColorScreen = new AvatarColorScreen(onAvatarColorChange, goToMenu);
+const tournamentWaitingScreen = new TournamentWaitingScreen(leaveTournament);
+const tournamentBracketScreen = new TournamentBracketScreen(leaveTournament);
 const matchmakingScreen = new MatchmakingScreen(onMatchmakingCancel, onMatchmakingStartNow);
 const endGameScreen = new EndGameScreen(goToMenu, claimRematchBonus);
 const savedReplaysScreen = new SavedReplaysScreen(watchSavedReplay, deleteSavedReplay, goToMenu);
@@ -704,7 +916,10 @@ function updateMatch(dt: number): void {
     replayOverlay.hide();
   }
 
-  if (state.phase === 'ended' && prevPhase !== 'ended') endMatchFlow();
+  if (state.phase === 'ended' && prevPhase !== 'ended') {
+    if (inTournamentMatch) endTournamentMatchFlow();
+    else endMatchFlow();
+  }
   prevPhase = state.phase;
 }
 

@@ -4,7 +4,7 @@
 // decide o que acontece é sempre o servidor (ver server/src/index.ts).
 
 import type { AvatarColor, Command, GameState, MatchEvent, MatchSettings, PlayerId, TeamId } from '../core/types';
-import type { ClientMessage, ServerMessage } from './protocol';
+import type { ClientMessage, ServerMessage, TournamentSnapshot } from './protocol';
 
 // wss:// em produção (o site já é HTTPS, então ws:// puro seria bloqueado
 // como "conteúdo misto") — só cai pro localhost se alguém sobrescrever via
@@ -30,6 +30,12 @@ export type OnlineClientCallbacks = {
   // entrada e já fechou a conexão em seguida (ver server/src/index.ts).
   onBanned: () => void;
   onClose: () => void;
+  // Campeonato (ver protocol.ts TournamentSnapshot) — opcionais porque só
+  // quem realmente usa a tela de torneio precisa lidar com isso; o resto
+  // do multiplayer (quickMatch/createRoom/joinRoom) nunca recebe essas
+  // mensagens, então não precisa de callback nenhum pra elas.
+  onTournament?: (tournament: TournamentSnapshot, yourSlot: number | null) => void;
+  onTournamentFull?: () => void;
 };
 
 export class OnlineClient {
@@ -55,6 +61,8 @@ export class OnlineClient {
       else if (message.type === 'state') callbacks.onState(message.state, message.events);
       else if (message.type === 'opponentLeft') callbacks.onOpponentLeft();
       else if (message.type === 'banned') callbacks.onBanned();
+      else if (message.type === 'tournament') callbacks.onTournament?.(message.tournament, message.yourSlot);
+      else if (message.type === 'tournamentFull') callbacks.onTournamentFull?.();
     });
 
     ws.addEventListener('close', () => callbacks.onClose());
@@ -84,6 +92,21 @@ export class OnlineClient {
 
   requestStartNow(): void {
     this.sendRaw({ type: 'startNow' });
+  }
+
+  // Campeonato (quartas -> semifinal -> final, 8 vagas) — só 1v1 funciona
+  // de verdade nessa entrega, mas o protocolo já aceita teamSize genérico
+  // pra dupla/trio serem só uma extensão futura (ver server/src/index.ts).
+  requestTournamentJoin(name: string, avatarColor: AvatarColor, authToken?: string): void {
+    this.sendRaw({ type: 'tournamentJoin', teamSize: 1, name, avatarColor, authToken });
+  }
+
+  requestTournamentLeaveQueue(): void {
+    this.sendRaw({ type: 'tournamentLeaveQueue' });
+  }
+
+  requestTournamentSpectate(tournamentId: string): void {
+    this.sendRaw({ type: 'tournamentSpectate', tournamentId });
   }
 
   sendCommand(command: Command): void {

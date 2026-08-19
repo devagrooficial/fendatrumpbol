@@ -46,7 +46,26 @@ export type ClientMessage =
   // `unspectate` para de receber (não fecha a conexão do canal admin,
   // ela continua recebendo 'adminRooms' normalmente).
   | { type: 'spectate'; roomId: string }
-  | { type: 'unspectate' };
+  | { type: 'unspectate' }
+  // Entra na fila de um campeonato (torneio de eliminação simples: quartas
+  // → semifinal → final, 8 vagas). Igual quickMatch, entra num torneio já
+  // esperando gente do mesmo teamSize, ou cria um novo se não tiver
+  // nenhum. Só teamSize 1 (1v1) funciona de verdade nessa entrega — o
+  // protocolo já aceita outros valores porque a tela do cliente é
+  // genérica, mas o servidor recusa (ver TOURNAMENT_TEAM_SIZE em
+  // server/src/index.ts) até dupla/trio serem implementados. Mesma regra
+  // de authToken do quickMatch: opcional, convidado continua podendo
+  // jogar torneio, só não aparece com nome/email de verdade no bracket.
+  | { type: 'tournamentJoin'; teamSize: number; name: string; avatarColor: AvatarColor; authToken?: string }
+  // Sai da fila ENQUANTO ainda espera vaga (torneio não começou pra
+  // valer) — depois que a chave já foi montada, sair vira W.O. de verdade
+  // (ver 'opponentLeft'/regras de walkover no servidor), não dá mais pra
+  // "desistir da fila" sem consequência.
+  | { type: 'tournamentLeaveQueue' }
+  // Assiste à chave de um torneio (ativo ou já encerrado) sem participar
+  // — usado tanto por quem já foi eliminado (continua vendo o resto) e
+  // quer acompanhar, quanto por quem só quer ver o campeonato de fora.
+  | { type: 'tournamentSpectate'; tournamentId: string };
 
 export type ServerMessage =
   // `names`/`colors` cobrem TODOS os slots com humano de verdade nessa
@@ -75,7 +94,52 @@ export type ServerMessage =
   | { type: 'spectateStarted'; roomId: string; players: AdminPlayerSnapshot[] }
   // A partida espectada acabou/sumiu (terminou de verdade, ou o roomId
   // pedido nem existia mais) — o cliente volta pra lista de salas.
-  | { type: 'spectateEnded' };
+  | { type: 'spectateEnded' }
+  // Todos os torneios abertos já estão no limite de capacidade do
+  // servidor (ver MAX_CONCURRENT_TOURNAMENTS) — tenta de novo mais tarde.
+  | { type: 'tournamentFull' }
+  // Estado completo do torneio — mandado sempre que algo muda (gente
+  // entra na fila, partida começa/termina, campeão é decidido). O mesmo
+  // tipo serve tanto pra "ainda esperando gente" (status 'waiting') quanto
+  // pra "chave em andamento/encerrada" — o cliente decide qual tela
+  // mostrar a partir de `tournament.status`. `yourSlot` é só preenchido
+  // pra quem está DENTRO do torneio (jogando); espectador recebe `null`.
+  | { type: 'tournament'; tournament: TournamentSnapshot; yourSlot: number | null };
+
+export type TournamentRound = 'quarterfinal' | 'semifinal' | 'final';
+
+export type TournamentTeamInfo = {
+  slot: number; // 0-7, ordem de entrada na fila
+  names: string[]; // 1 nome por jogador da vaga (hoje sempre length 1)
+  emails: (string | null)[];
+  // Só existe enquanto a vaga ainda está esperando o torneio começar —
+  // depois que vira partida de verdade, isso é sempre `false` (o estado
+  // de conexão durante a partida já é tratado pelo Room normal).
+  connected: boolean;
+};
+
+export type TournamentMatchInfo = {
+  round: TournamentRound;
+  index: number; // posição dentro da rodada: quartas 0-3, semi 0-1, final 0
+  teamSlotA: number | null; // índice em tournament.teams — null até a vaga ser decidida
+  teamSlotB: number | null;
+  winnerTeamSlot: number | null;
+  scoreA: number;
+  scoreB: number;
+  status: 'pending' | 'playing' | 'completed';
+  // Preenchido só quando o motivo do fim foi alguém sair no meio (W.O.),
+  // não uma vitória de verdade em campo.
+  forfeitedTeamSlot: number | null;
+};
+
+export type TournamentSnapshot = {
+  id: string;
+  teamSize: number;
+  status: 'waiting' | 'active' | 'completed';
+  teams: TournamentTeamInfo[];
+  matches: TournamentMatchInfo[]; // sempre 7: 4 quartas + 2 semi + 1 final
+  championSlot: number | null;
+};
 
 // Retrato de UMA sala/fila ativa (esperando gente OU já jogando), pro
 // painel "Ao vivo" do admin — nunca mandado pra ninguém além de uma

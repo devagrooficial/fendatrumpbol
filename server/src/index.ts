@@ -19,8 +19,17 @@ import { createMatchState } from '../../src/futtrool/core/rules';
 import { createAiState, decideCommand, type AiState } from '../../src/futtrool/core/ai/brain';
 import { AI_PROFILES } from '../../src/futtrool/core/ai/profiles';
 import { AVATAR_COLOR_PALETTE, DEFAULT_AVATAR_COLOR, FIXED_TIMESTEP_S, MATCH, MATCH_SETTINGS_OPTIONS } from '../../src/futtrool/core/constants';
-import type { AvatarColor, AvatarColorMode, Command, GameState, MatchSettings, PlayerId, TeamId } from '../../src/futtrool/core/types';
-import type { AdminPlayerSnapshot, AdminRoomSnapshot, ClientMessage, ServerMessage } from '../../src/futtrool/net/protocol';
+import type { AvatarColor, AvatarColorMode, Command, GameState, MatchResult, MatchSettings, PlayerId, TeamId } from '../../src/futtrool/core/types';
+import type {
+  AdminPlayerSnapshot,
+  AdminRoomSnapshot,
+  ClientMessage,
+  ServerMessage,
+  TournamentMatchInfo,
+  TournamentRound,
+  TournamentSnapshot,
+  TournamentTeamInfo,
+} from '../../src/futtrool/net/protocol';
 import { ADMIN_EMAIL } from './adminConfig';
 
 // Cliente Supabase do PRÓPRIO servidor (não confundir com o do navegador,
@@ -157,6 +166,18 @@ function buildRoster(teamSize: number): Record<TeamId, PlayerId[]> {
   return { teamA, teamB };
 }
 
+// Motivo do fim de uma Room — precisa disso (em vez de só chamar
+// onEnded() sem argumento nenhum, como era antes) porque o campeonato
+// (ver seção mais abaixo) precisa saber EXATAMENTE por que a partida
+// acabou pra decidir quem avança: vitória de verdade em campo, alguém
+// desconectando no meio (W.O. pro outro lado), ou o servidor caindo
+// (nesse caso não decide nada — o torneio inteiro se perde mesmo, é um
+// processo em memória, sem retomada entre reinícios, limitação conhecida).
+type RoomEndInfo =
+  | { reason: 'completed'; result: MatchResult; score: Record<TeamId, number> }
+  | { reason: 'disconnect'; disconnectedPlayerId: PlayerId }
+  | { reason: 'shutdown' };
+
 // ---------------------------------------------------------------------------
 // Room: uma partida em andamento — humanos mandam Command via WebSocket,
 // slots sem humano (sala que começou incompleta, ver Lobby.start) são
@@ -178,7 +199,16 @@ class Room {
   // de verdade, nunca mandam 'command' nenhum (o servidor simplesmente não
   // ouve 'message' delas pra esse fim, ver wss.on('connection') abaixo).
   private readonly spectators = new Set<WebSocket>();
-  private readonly onEnded: () => void;
+  // Handler de 'close' de cada jogador humano — guardado pra dar
+  // ws.off(...) só NESSE listener quando a Room acaba sem fechar o socket
+  // (partida de campeonato, ver `closeSocketsOnEnd`). Sem isso, o listener
+  // antigo continuava pendurado no socket pra sempre e disparava de novo
+  // (chamando stop() uma SEGUNDA vez, processando o fim da partida em
+  // duplicata) numa desconexão bem mais tarde, já noutra rodada.
+  private readonly closeListeners = new Map<WebSocket, () => void>();
+  private readonly closeSocketsOnEnd: boolean;
+  private readonly onEnded: (info: RoomEndInfo) => void;
+  private ended = false;
 
   constructor(
     id: string,
@@ -188,13 +218,15 @@ class Room {
     colors: Record<PlayerId, AvatarColor>,
     emails: Record<PlayerId, string | null>,
     matchSettings: MatchSettings,
-    onEnded: () => void,
+    closeSocketsOnEnd: boolean,
+    onEnded: (info: RoomEndInfo) => void,
   ) {
     this.id = id;
     this.humanSockets = humanSockets;
     this.names = names;
     this.emails = emails;
     this.teamSize = roster.teamA.length;
+    this.closeSocketsOnEnd = closeSocketsOnEnd;
     this.onEnded = onEnded;
     this.state = createMatchState(Date.now(), MATCH.KICKOFF_COUNTDOWN_MS, roster, matchSettings);
 
@@ -210,7 +242,9 @@ class Room {
         // request) — a partir daqui só interessa 'command'.
         ws.removeAllListeners('message');
         ws.on('message', (raw) => this.handleMessage(id, raw.toString()));
-        ws.on('close', () => this.handleDisconnect(id));
+        const onClose = () => this.handleDisconnect(id);
+        this.closeListeners.set(ws, onClose);
+        ws.on('close', onClose);
       } else {
         this.botStates.set(id, createAiState(Date.now() + index * 7919)); // seeds diferentes por bot
       }
@@ -234,7 +268,7 @@ class Room {
     for (const [id, ws] of Object.entries(this.humanSockets) as [PlayerId, WebSocket][]) {
       if (id !== playerId) send(ws, { type: 'opponentLeft' });
     }
-    this.stop();
+    this.stop({ reason: 'disconnect', disconnectedPlayerId: playerId });
   }
 
   private tick(): void {
@@ -251,7 +285,9 @@ class Room {
     for (const ws of this.allHumanSockets()) send(ws, message);
     for (const ws of this.spectators) send(ws, message);
 
-    if (this.state.phase === 'ended') this.stop();
+    if (this.state.phase === 'ended') {
+      this.stop({ reason: 'completed', result: this.state.result!, score: this.state.score });
+    }
   }
 
   private allHumanSockets(): WebSocket[] {
@@ -278,14 +314,22 @@ class Room {
     this.spectators.delete(ws);
   }
 
-  stop(): void {
+  stop(info: RoomEndInfo): void {
+    if (this.ended) return; // idempotente por segurança extra, além da remoção de listener abaixo
+    this.ended = true;
+
     clearInterval(this.timer);
-    for (const ws of this.allHumanSockets()) {
-      if (ws.readyState === WebSocket.OPEN) ws.close();
+    for (const [ws, onClose] of this.closeListeners) ws.off('close', onClose);
+    this.closeListeners.clear();
+
+    if (this.closeSocketsOnEnd) {
+      for (const ws of this.allHumanSockets()) {
+        if (ws.readyState === WebSocket.OPEN) ws.close();
+      }
     }
     for (const ws of this.spectators) send(ws, { type: 'spectateEnded' });
     this.spectators.clear();
-    this.onEnded();
+    this.onEnded(info);
   }
 }
 
@@ -350,7 +394,7 @@ function startLobby(lobby: Lobby): void {
   });
 
   const roomId = randomUUID();
-  const room = new Room(roomId, roster, humanSockets, names, colors, emails, lobby.matchSettings, () => rooms.delete(roomId));
+  const room = new Room(roomId, roster, humanSockets, names, colors, emails, lobby.matchSettings, true, () => rooms.delete(roomId));
   rooms.set(roomId, room);
 }
 
@@ -431,6 +475,415 @@ setInterval(() => {
   const message: ServerMessage = { type: 'adminRooms', rooms: collectAdminSnapshots() };
   for (const ws of adminObservers) send(ws, message);
 }, ADMIN_BROADCAST_INTERVAL_MS);
+
+// ---------------------------------------------------------------------------
+// Campeonato: torneio de eliminação simples de 8 vagas — quartas (4
+// partidas) -> semifinal (2) -> final (1). Cada partida é uma Room comum
+// (mesma simulação/física de sempre), só que orquestrada em cadeia: o
+// vencedor de cada partida entra automaticamente na próxima rodada, e só
+// COMEÇA a jogar quando a vaga do outro lado também estiver decidida
+// (pedido explícito: "vencedor avança e espera o outro terminar pra
+// continuar"). Quem desconecta no meio de uma partida de torneio dá W.O.
+// pro adversário na hora (não vira bot, diferente do quickMatch — não
+// faria sentido um bot "carregar" alguém pra frente numa chave
+// competitiva); quem desconecta ENQUANTO espera a próxima rodada também
+// perde por W.O. assim que a vaga dele seria necessária.
+//
+// Só 1v1 (TOURNAMENT_TEAM_SIZE) funciona nessa entrega — o protocolo já é
+// genérico (teamSize em 'tournamentJoin') pensando em dupla/trio como
+// extensão futura, sem precisar mudar o formato da chave depois.
+//
+// Estado 100% em memória, sem retomada entre reinícios do processo (igual
+// qualquer partida em andamento hoje) — public.tournaments (Supabase) é
+// só o REGISTRO público pro histórico/bracket, não uma fonte de retomada.
+// ---------------------------------------------------------------------------
+
+const TOURNAMENT_TEAM_SIZE = 1;
+const TOURNAMENT_SLOTS = 8;
+const TOURNAMENT_MATCH_SETTINGS: MatchSettings = { durationMs: MATCH.DURATION_MS, goalsToWin: MATCH.GOALS_TO_WIN };
+
+// Cada torneio ativo pode ter até 4 partidas de quartas rodando ao mesmo
+// tempo — mesmo custo de simulação (física 2D simples a 60Hz) que 4
+// partidas quickMatch 1v1 comuns já suportam sem problema hoje, sem limite
+// nenhum. Limitar quantos TORNEIOS simultâneos o servidor aceita é o que
+// protege o resto do que roda nessa mesma VPS (Chatwoot, n8n, Evolution
+// API, Supabase self-hosted, Postgres, MinIO, Portainer, Traefik) de um
+// pico repentino de gente entrando em campeonato ao mesmo tempo — 4
+// torneios ativos ao mesmo tempo = até 16 partidas de quartas simultâneas
+// na pior hipótese (fora o tráfego normal de quickMatch/createRoom por
+// cima disso), margem generosa mas ainda contida. Fácil subir esse número
+// depois se o servidor aguentar mais sem sentir.
+const MAX_CONCURRENT_TOURNAMENTS = 4;
+
+type TournamentTeam = {
+  slot: number;
+  sockets: WebSocket[]; // teamSize itens, na ordem de entrada
+  names: string[];
+  emails: (string | null)[];
+  avatarColors: AvatarColor[];
+};
+
+type TournamentMatch = {
+  round: TournamentRound;
+  index: number;
+  teamSlotA: number | null;
+  teamSlotB: number | null;
+  winnerTeamSlot: number | null;
+  scoreA: number;
+  scoreB: number;
+  status: 'pending' | 'playing' | 'completed';
+  forfeitedTeamSlot: number | null;
+  room: Room | null;
+};
+
+type Tournament = {
+  id: string;
+  teamSize: number;
+  status: 'waiting' | 'active' | 'completed';
+  teams: TournamentTeam[];
+  matches: TournamentMatch[];
+  championSlot: number | null;
+};
+
+const openTournaments = new Map<number, Tournament>(); // teamSize -> torneio ainda esperando gente
+const allTournaments = new Map<string, Tournament>();
+const tournamentSpectators = new Map<string, Set<WebSocket>>();
+// vaga de torneio de cada socket ENQUANTO ainda espera vaga (status
+// 'waiting') — depois que a chave começa pra valer, quem sabe a vaga de
+// cada um é a própria Room (igual quickMatch).
+const socketTournamentQueueSlot = new Map<WebSocket, { tournamentId: string; slot: number }>();
+// Handler de 'close' de quem já GANHOU a rodada e está esperando a outra
+// partida da mesma chave terminar — precisa disso separado do
+// socketTournamentQueueSlot de cima (que é só pra fase de fila).
+const tournamentWaitCloseHandlers = new Map<WebSocket, () => void>();
+
+function activeTournamentCount(): number {
+  let count = 0;
+  for (const t of allTournaments.values()) {
+    if (t.status !== 'completed') count++;
+  }
+  return count;
+}
+
+// Pra onde o vencedor de uma partida vai — QF0+QF1 alimentam SF0, QF2+QF3
+// alimentam SF1, SF0+SF1 alimentam a final; final não alimenta nada (é o
+// fim da chave).
+function feedsInto(round: TournamentRound, index: number): { round: TournamentRound; index: number; side: 'A' | 'B' } | null {
+  if (round === 'quarterfinal') return { round: 'semifinal', index: Math.floor(index / 2), side: index % 2 === 0 ? 'A' : 'B' };
+  if (round === 'semifinal') return { round: 'final', index: 0, side: index % 2 === 0 ? 'A' : 'B' };
+  return null;
+}
+
+function buildEmptyMatches(): TournamentMatch[] {
+  const matches: TournamentMatch[] = [];
+  const push = (round: TournamentRound, index: number): void => {
+    matches.push({
+      round,
+      index,
+      teamSlotA: null,
+      teamSlotB: null,
+      winnerTeamSlot: null,
+      scoreA: 0,
+      scoreB: 0,
+      status: 'pending',
+      forfeitedTeamSlot: null,
+      room: null,
+    });
+  };
+  for (let i = 0; i < 4; i++) push('quarterfinal', i);
+  for (let i = 0; i < 2; i++) push('semifinal', i);
+  push('final', 0);
+  return matches;
+}
+
+function findMatch(t: Tournament, round: TournamentRound, index: number): TournamentMatch {
+  // buildEmptyMatches() sempre cria as 7 combinações válidas de
+  // round/index — chamar isso com uma combinação que não existe é erro de
+  // programação, não entrada de usuário (nunca vem direto do cliente).
+  return t.matches.find((m) => m.round === round && m.index === index)!;
+}
+
+function toSnapshot(t: Tournament): TournamentSnapshot {
+  const teams: TournamentTeamInfo[] = t.teams.map((team) => ({
+    slot: team.slot,
+    names: team.names,
+    emails: team.emails,
+    connected: team.sockets.every((ws) => ws.readyState === WebSocket.OPEN),
+  }));
+  const matches: TournamentMatchInfo[] = t.matches.map((m) => ({
+    round: m.round,
+    index: m.index,
+    teamSlotA: m.teamSlotA,
+    teamSlotB: m.teamSlotB,
+    winnerTeamSlot: m.winnerTeamSlot,
+    scoreA: m.scoreA,
+    scoreB: m.scoreB,
+    status: m.status,
+    forfeitedTeamSlot: m.forfeitedTeamSlot,
+  }));
+  return { id: t.id, teamSize: t.teamSize, status: t.status, teams, matches, championSlot: t.championSlot };
+}
+
+// Registro público (histórico/bracket) — nunca a fonte de verdade de quem
+// ganhou (isso é sempre a Room, em memória). Falha em silêncio (Supabase
+// fora do ar não pode derrubar o torneio de verdade).
+async function persistTournament(t: Tournament): Promise<void> {
+  if (!supabase) return;
+  const snapshot = toSnapshot(t);
+  const championName = t.championSlot !== null ? (t.teams[t.championSlot]?.names.join(' & ') ?? null) : null;
+  try {
+    await supabase.from('tournaments').upsert({
+      id: t.id,
+      team_size: t.teamSize,
+      status: t.status,
+      teams: snapshot.teams,
+      matches: snapshot.matches,
+      champion_name: championName,
+      updated_at: new Date().toISOString(),
+    });
+  } catch {
+    // idem — só o registro público, nunca trava o torneio de verdade.
+  }
+}
+
+function broadcastTournament(t: Tournament): void {
+  const snapshot = toSnapshot(t);
+  for (const team of t.teams) {
+    for (const ws of team.sockets) send(ws, { type: 'tournament', tournament: snapshot, yourSlot: team.slot });
+  }
+  for (const ws of tournamentSpectators.get(t.id) ?? []) send(ws, { type: 'tournament', tournament: snapshot, yourSlot: null });
+  void persistTournament(t);
+}
+
+function removeTournamentFromOpenPool(t: Tournament): void {
+  if (openTournaments.get(t.teamSize) === t) openTournaments.delete(t.teamSize);
+}
+
+function clearTournamentWaitWatcher(ws: WebSocket): void {
+  const handler = tournamentWaitCloseHandlers.get(ws);
+  if (handler) {
+    ws.off('close', handler);
+    tournamentWaitCloseHandlers.delete(ws);
+  }
+}
+
+// Vigia quem GANHOU a rodada e está esperando a outra partida da mesma
+// chave terminar — se essa pessoa cair enquanto espera, já resolve a
+// vaga dela como W.O. na hora que a próxima partida for tentada montar
+// (ver startTournamentMatch), sem precisar ficar esperando ela "aparecer"
+// de novo (não existe reconexão automática nesse servidor, ver topo do
+// arquivo).
+function watchTournamentDisconnect(ws: WebSocket, tournamentId: string, teamSlot: number): void {
+  clearTournamentWaitWatcher(ws);
+  const handler = (): void => {
+    tournamentWaitCloseHandlers.delete(ws);
+    const t = allTournaments.get(tournamentId);
+    if (!t || t.status === 'completed') return;
+    const pending = t.matches.find((m) => m.status === 'pending' && (m.teamSlotA === teamSlot || m.teamSlotB === teamSlot));
+    if (!pending) return;
+    const winnerSlot = pending.teamSlotA === teamSlot ? pending.teamSlotB : pending.teamSlotA;
+    if (winnerSlot === null) return; // a partida nem tem os dois lados decididos ainda
+    resolveMatchForfeit(t, pending, winnerSlot);
+  };
+  tournamentWaitCloseHandlers.set(ws, handler);
+  ws.on('close', handler);
+}
+
+function resolveMatchWinner(t: Tournament, match: TournamentMatch, winnerSlot: number, forfeitedTeamSlot: number | null): void {
+  match.winnerTeamSlot = winnerSlot;
+  match.status = 'completed';
+  match.forfeitedTeamSlot = forfeitedTeamSlot;
+
+  if (match.round === 'final') {
+    t.championSlot = winnerSlot;
+    t.status = 'completed';
+    broadcastTournament(t);
+    return;
+  }
+
+  const next = feedsInto(match.round, match.index);
+  if (!next) return; // nunca acontece (só 'final' devolve null, já tratado acima), só pro TS não reclamar
+  const nextMatch = findMatch(t, next.round, next.index);
+  if (next.side === 'A') nextMatch.teamSlotA = winnerSlot;
+  else nextMatch.teamSlotB = winnerSlot;
+
+  broadcastTournament(t);
+
+  if (nextMatch.teamSlotA !== null && nextMatch.teamSlotB !== null) {
+    startTournamentMatch(t, nextMatch);
+  } else {
+    // ainda esperando a OUTRA partida dessa rodada terminar — fica de
+    // olho se quem já ganhou desconectar nesse meio tempo.
+    const winnerTeam = t.teams[winnerSlot]!;
+    for (const ws of winnerTeam.sockets) watchTournamentDisconnect(ws, t.id, winnerSlot);
+  }
+}
+
+function resolveMatchForfeit(t: Tournament, match: TournamentMatch, winnerSlot: number): void {
+  match.scoreA = 0;
+  match.scoreB = 0;
+  const forfeitedSlot = winnerSlot === match.teamSlotA ? match.teamSlotB! : match.teamSlotA!;
+  resolveMatchWinner(t, match, winnerSlot, forfeitedSlot);
+}
+
+function disconnectedTeamSlot(match: TournamentMatch, playerId: PlayerId): number {
+  return playerId.startsWith('teamA') ? match.teamSlotA! : match.teamSlotB!;
+}
+
+function handleTournamentMatchEnded(t: Tournament, match: TournamentMatch, info: RoomEndInfo): void {
+  match.room = null;
+  match.status = 'completed';
+
+  if (info.reason === 'shutdown') return; // torneio se perde com o processo, nada a resolver
+
+  if (info.reason === 'disconnect') {
+    const loserSlot = disconnectedTeamSlot(match, info.disconnectedPlayerId);
+    const winnerSlot = loserSlot === match.teamSlotA ? match.teamSlotB! : match.teamSlotA!;
+    resolveMatchForfeit(t, match, winnerSlot);
+    return;
+  }
+
+  // completou de verdade
+  match.scoreA = info.score.teamA;
+  match.scoreB = info.score.teamB;
+  const winnerSlot = info.result === 'teamA' ? match.teamSlotA : info.result === 'teamB' ? match.teamSlotB : null;
+  if (winnerSlot === null) {
+    // Empate de verdade (prorrogação também esgotou, ver core/simulation.ts)
+    // — raríssimo (MATCH.OVERTIME_MS de morte súbita), mas uma chave não
+    // pode ficar travada esperando um resultado que nunca vem: desempata
+    // pro menor slot, sempre determinístico.
+    resolveMatchWinner(t, match, Math.min(match.teamSlotA!, match.teamSlotB!), null);
+    return;
+  }
+  resolveMatchWinner(t, match, winnerSlot, null);
+}
+
+function startTournamentMatch(t: Tournament, match: TournamentMatch): void {
+  if (match.teamSlotA === null || match.teamSlotB === null) return; // ainda não decidido
+  const teamA = t.teams[match.teamSlotA]!;
+  const teamB = t.teams[match.teamSlotB]!;
+
+  const aConnected = teamA.sockets.every((ws) => ws.readyState === WebSocket.OPEN);
+  const bConnected = teamB.sockets.every((ws) => ws.readyState === WebSocket.OPEN);
+  if (!aConnected || !bConnected) {
+    // Alguém já sumiu enquanto esperava a vaga anterior terminar — nem
+    // cria a partida, já é W.O. na hora. Se os dois sumiram (caso
+    // raríssimo), dá o jogo por perdido pro lado B só pra ter um
+    // resultado determinístico, sem travar a chave.
+    resolveMatchForfeit(t, match, aConnected ? match.teamSlotA : bConnected ? match.teamSlotB : match.teamSlotB);
+    return;
+  }
+
+  for (const ws of [...teamA.sockets, ...teamB.sockets]) clearTournamentWaitWatcher(ws);
+  match.status = 'playing';
+  broadcastTournament(t);
+
+  const roster = buildRoster(t.teamSize);
+  const humanSockets: Partial<Record<PlayerId, WebSocket>> = {};
+  const names = {} as Record<PlayerId, string>;
+  const colors = {} as Record<PlayerId, AvatarColor>;
+  const emails = {} as Record<PlayerId, string | null>;
+  teamA.sockets.forEach((ws, i) => {
+    const id = `teamA-${i}` as PlayerId;
+    humanSockets[id] = ws;
+    names[id] = teamA.names[i] ?? 'Jogador';
+    colors[id] = teamA.avatarColors[i] ?? DEFAULT_AVATAR_COLOR;
+    emails[id] = teamA.emails[i] ?? null;
+  });
+  teamB.sockets.forEach((ws, i) => {
+    const id = `teamB-${i}` as PlayerId;
+    humanSockets[id] = ws;
+    names[id] = teamB.names[i] ?? 'Jogador';
+    colors[id] = teamB.avatarColors[i] ?? DEFAULT_AVATAR_COLOR;
+    emails[id] = teamB.emails[i] ?? null;
+  });
+
+  const roomId = randomUUID();
+  const room = new Room(roomId, roster, humanSockets, names, colors, emails, TOURNAMENT_MATCH_SETTINGS, false, (info) => {
+    rooms.delete(roomId);
+    handleTournamentMatchEnded(t, match, info);
+  });
+  rooms.set(roomId, room);
+  match.room = room;
+}
+
+function startTournament(t: Tournament): void {
+  removeTournamentFromOpenPool(t);
+  t.status = 'active';
+  // Quartas: vaga0 vs vaga1, vaga2 vs vaga3, vaga4 vs vaga5, vaga6 vs
+  // vaga7 — ordem de chegada na fila, sem seed especial (não tem ranking
+  // pra basear isso ainda).
+  for (let i = 0; i < 4; i++) {
+    const match = findMatch(t, 'quarterfinal', i);
+    match.teamSlotA = i * 2;
+    match.teamSlotB = i * 2 + 1;
+  }
+  broadcastTournament(t);
+  for (let i = 0; i < 4; i++) startTournamentMatch(t, findMatch(t, 'quarterfinal', i));
+}
+
+function getOrCreateOpenTournament(teamSize: number): Tournament | 'full' {
+  const existing = openTournaments.get(teamSize);
+  if (existing) return existing;
+  if (activeTournamentCount() >= MAX_CONCURRENT_TOURNAMENTS) return 'full';
+  const t: Tournament = {
+    id: randomUUID(),
+    teamSize,
+    status: 'waiting',
+    teams: [],
+    matches: buildEmptyMatches(),
+    championSlot: null,
+  };
+  allTournaments.set(t.id, t);
+  openTournaments.set(teamSize, t);
+  return t;
+}
+
+function joinTournament(ws: WebSocket, name: string, email: string | null, avatarColor: AvatarColor): void {
+  const teamSize = TOURNAMENT_TEAM_SIZE; // fixo em 1 nessa entrega, ver comentário no topo da seção
+  const result = getOrCreateOpenTournament(teamSize);
+  if (result === 'full') {
+    send(ws, { type: 'tournamentFull' });
+    return;
+  }
+  const t = result;
+  const slot = t.teams.length;
+  const team: TournamentTeam = { slot, sockets: [ws], names: [name], emails: [email], avatarColors: [avatarColor] };
+  t.teams.push(team);
+  socketTournamentQueueSlot.set(ws, { tournamentId: t.id, slot });
+
+  if (t.teams.length >= TOURNAMENT_SLOTS) startTournament(t);
+  else broadcastTournament(t);
+}
+
+// Sai da fila ENQUANTO ainda espera vaga (chamado tanto por
+// 'tournamentLeaveQueue' quanto no 'close' geral do socket) — não faz
+// nada se o torneio já começou pra valer (nesse ponto, sair é W.O. de
+// verdade, tratado por handleDisconnect/watchTournamentDisconnect).
+function removeFromTournamentQueue(ws: WebSocket): void {
+  const info = socketTournamentQueueSlot.get(ws);
+  if (!info) return;
+  const t = allTournaments.get(info.tournamentId);
+  socketTournamentQueueSlot.delete(ws);
+  if (!t || t.status !== 'waiting') return;
+
+  const idx = t.teams.findIndex((team) => team.slot === info.slot);
+  if (idx === -1) return;
+  t.teams.splice(idx, 1);
+  // Renumera as vagas restantes (senão sobra buraco no meio da fila e o
+  // pareamento das quartas, que assume vagas 0-7 contíguas, quebra).
+  t.teams.forEach((team, i) => {
+    team.slot = i;
+    for (const s of team.sockets) socketTournamentQueueSlot.set(s, { tournamentId: t.id, slot: i });
+  });
+
+  if (t.teams.length === 0) {
+    allTournaments.delete(t.id);
+    removeTournamentFromOpenPool(t);
+  } else {
+    broadcastTournament(t);
+  }
+}
 
 const wss = new WebSocketServer({ port: PORT });
 
@@ -533,12 +986,44 @@ wss.on('connection', (ws) => {
       stopSpectating(ws);
       return;
     }
+
+    if (parsed.type === 'tournamentJoin') {
+      const email = await verifyEmail(parsed.authToken);
+      if (email && bannedEmails.has(email.toLowerCase())) {
+        send(ws, { type: 'banned' });
+        ws.close();
+        return;
+      }
+      joinTournament(ws, sanitizeName(parsed.name), email, sanitizeAvatarColor(parsed.avatarColor));
+      return;
+    }
+
+    if (parsed.type === 'tournamentLeaveQueue') {
+      removeFromTournamentQueue(ws);
+      return;
+    }
+
+    if (parsed.type === 'tournamentSpectate') {
+      const t = allTournaments.get(parsed.tournamentId);
+      if (!t) return;
+      let set = tournamentSpectators.get(t.id);
+      if (!set) {
+        set = new Set();
+        tournamentSpectators.set(t.id, set);
+      }
+      set.add(ws);
+      send(ws, { type: 'tournament', tournament: toSnapshot(t), yourSlot: null });
+      return;
+    }
   });
 
   ws.on('close', () => {
     removeFromPendingLobby(ws);
     adminObservers.delete(ws);
     stopSpectating(ws);
+    removeFromTournamentQueue(ws);
+    clearTournamentWaitWatcher(ws);
+    for (const set of tournamentSpectators.values()) set.delete(ws);
   });
 });
 
@@ -573,7 +1058,7 @@ console.log(`[futtrool-server] ouvindo em ws://0.0.0.0:${PORT}`);
 
 function shutdown(): void {
   clearInterval(heartbeat);
-  for (const room of rooms.values()) room.stop();
+  for (const room of rooms.values()) room.stop({ reason: 'shutdown' });
   wss.close(() => process.exit(0));
 }
 
