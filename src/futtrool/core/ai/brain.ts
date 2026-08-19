@@ -245,6 +245,37 @@ function findNearestOpponent(world: GameState, self: Player): Player {
   return nearest;
 }
 
+// Quem no MEU time está mais perto da bola agora — só esse (rank 0) age
+// como "respondente" e persegue/disputa a jogada; os outros seguram
+// posição (ver holdingPosition). Sem isso, cada bot só olha pro adversário
+// mais próximo (evaluateFsm) e ignora os PRÓPRIOS companheiros, então todo
+// mundo do time converge pro mesmo ponto — a bola — e empilha em cima um
+// do outro (foi literalmente o que o Mateus viu e reportou num 3v3). Usa
+// posição em tempo real dos companheiros (não a percepção com atraso) —
+// a regra de "sem acesso privilegiado" (seção 5 da spec) é sobre enxergar
+// o ADVERSÁRIO sem o mesmo atraso que um humano teria, não sobre saber
+// onde o próprio time está, que qualquer jogador de verdade também sabe.
+function computeTeamRole(world: GameState, playerId: PlayerId): { isPrimaryResponder: boolean; rank: number; teamSize: number } {
+  const teammateIds = world.roster[teamOf(playerId)];
+  const byDistance = teammateIds
+    .map((id) => ({ id, dist: length(sub(world.ball.pos, world.players[id]!.pos)) }))
+    .sort((a, b) => a.dist - b.dist);
+  const rank = byDistance.findIndex((entry) => entry.id === playerId);
+  return { isPrimaryResponder: rank === 0, rank, teamSize: teammateIds.length };
+}
+
+// Faixa de Y fixa (não persegue a bola) pra quem não é o respondente da
+// vez — cada rank (1º não-respondente, 2º, ...) pega uma faixa diferente,
+// puxada um pouco em direção ao Y da bola (fica "de olho" na jogada sem
+// abandonar a própria faixa e sem competir pelo mesmo ponto que o
+// respondente já está indo buscar).
+function holdingPosition(mySide: 'left' | 'right', rank: number, teamSize: number, ballY: number): Vec2 {
+  const depthX = mySide === 'left' ? FIELD.WIDTH * 0.32 : FIELD.WIDTH * 0.68;
+  const laneCount = Math.max(1, teamSize - 1); // exclui o respondente (rank 0)
+  const laneY = (FIELD.HEIGHT * rank) / (laneCount + 1);
+  return { x: depthX, y: laneY * 0.7 + ballY * 0.3 };
+}
+
 export function decideCommand(
   world: GameState,
   aiState: AiState,
@@ -282,7 +313,22 @@ export function decideCommand(
   if (msSinceEval >= EVAL_INTERVAL_MS && self.stunTimer <= 0) {
     msSinceEval = 0;
     const perceived = getDelayedSnapshot(history, profile.reactionMs, nowMs) ?? snapshot;
-    const decision = evaluateFsm(perceived, mySide, profile, rngState);
+
+    // Time de 1 (1v1 offline/online) sempre cai aqui como respondente único
+    // — comportamento idêntico ao de sempre, essa regra só muda alguma
+    // coisa quando há companheiro de verdade (2v2/3v3).
+    const role = computeTeamRole(world, playerId);
+    const ballIsRightHere = length(sub(world.ball.pos, self.pos)) <= PHYS.KICK_RANGE * 1.5;
+    const decision =
+      role.isPrimaryResponder || ballIsRightHere
+        ? evaluateFsm(perceived, mySide, profile, rngState)
+        : {
+            fsmState: 'defend' as AiFsmState,
+            targetPoint: holdingPosition(mySide, role.rank, role.teamSize, perceived.ball.pos.y),
+            wantsToShoot: false,
+            shootPower: 0,
+            rngState,
+          };
     fsmState = decision.fsmState;
     targetPoint = decision.targetPoint;
     rngState = decision.rngState;

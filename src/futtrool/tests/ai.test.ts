@@ -3,7 +3,8 @@ import { step } from '../core/simulation';
 import { createMatchState } from '../core/rules';
 import { createAiState, decideCommand, type AiState } from '../core/ai/brain';
 import { AI_PROFILES, type AiProfile } from '../core/ai/profiles';
-import type { GameState, TeamId } from '../core/types';
+import type { Command, GameState, PlayerId, TeamId } from '../core/types';
+import { length, sub } from '../core/vec2';
 
 const DT = 1 / 60;
 const ROSTER: Record<TeamId, ['teamA-0' | 'teamB-0']> = { teamA: ['teamA-0'], teamB: ['teamB-0'] };
@@ -117,5 +118,49 @@ describe('IA — balanceamento entre perfis (headless, sem render)', () => {
     // eslint-disable-next-line no-console
     console.info(`[ai balance] Profissional ${proWins} x ${novatoWins} Novato em ${MATCHES} partidas`);
     expect(proWins).toBeGreaterThanOrEqual(novatoWins);
+  }, 30_000);
+});
+
+describe('IA — papel de time em 2v2/3v3 (evita todo mundo empilhar na bola)', () => {
+  it('em 3v3, raramente os 3 jogadores do mesmo time ficam perto da bola ao mesmo tempo', () => {
+    const roster: Record<TeamId, PlayerId[]> = {
+      teamA: ['teamA-0', 'teamA-1', 'teamA-2'],
+      teamB: ['teamB-0', 'teamB-1', 'teamB-2'],
+    };
+    const allIds = [...roster.teamA, ...roster.teamB];
+
+    let state = createMatchState(1, 500, roster);
+    const aiStates = new Map<PlayerId, AiState>(allIds.map((id, i) => [id, createAiState(i + 1)]));
+
+    let clumpedSamples = 0;
+    let totalSamples = 0;
+    const CLUMP_RADIUS = 120; // u — bem menor que o campo (1200 de largura)
+    const TICKS = 60 * 30; // 30s simulados
+
+    for (let i = 0; i < TICKS; i++) {
+      const commands = {} as Record<PlayerId, Command>;
+      for (const id of allIds) {
+        const decision = decideCommand(state, aiStates.get(id)!, AI_PROFILES.profissional, id, DT);
+        aiStates.set(id, decision.aiState);
+        commands[id] = decision.command;
+      }
+      state = step(state, commands, DT).state;
+
+      if (state.phase === 'playing' && i % 60 === 0) {
+        for (const teamIds of [roster.teamA, roster.teamB]) {
+          totalSamples++;
+          const withinRadius = teamIds.filter((id) => length(sub(state.players[id]!.pos, state.ball.pos)) <= CLUMP_RADIUS);
+          if (withinRadius.length >= 3) clumpedSamples++;
+        }
+      }
+    }
+
+    const clumpRate = clumpedSamples / totalSamples;
+    // eslint-disable-next-line no-console
+    console.info(`[clump check] ${clumpedSamples}/${totalSamples} amostras com o time inteiro perto da bola (${(clumpRate * 100).toFixed(1)}%)`);
+    // Não zero de propósito — kickoff/disputa de bola solta legitimamente
+    // junta todo mundo por um instante; o que o papel de time evita é isso
+    // virar o estado ESTÁVEL da partida.
+    expect(clumpRate).toBeLessThan(0.15);
   }, 30_000);
 });
