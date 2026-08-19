@@ -38,6 +38,7 @@ import { MatchSettingsStore } from './progression/matchSettings';
 import { MatchSettingsScreen } from './ui/screens/MatchSettingsScreen';
 import { AvatarColorStore } from './progression/avatarColor';
 import { AvatarColorScreen } from './ui/screens/AvatarColorScreen';
+import { TournamentSetupScreen, type TournamentSetupChoice } from './ui/screens/TournamentSetupScreen';
 import { TournamentWaitingScreen } from './ui/screens/TournamentWaitingScreen';
 import { TournamentBracketScreen } from './ui/screens/TournamentBracketScreen';
 import type { TournamentSnapshot } from './net/protocol';
@@ -124,6 +125,7 @@ type AppScreen =
   | 'avatarColor'
   | 'matchmaking'
   | 'onlineMatchmaking'
+  | 'tournamentSetup'
   | 'tournamentWaiting'
   | 'tournamentBracket'
   | 'match'
@@ -252,6 +254,7 @@ function hideAllScreens(): void {
   replayOverlay.hide();
   matchSettingsScreen.hide();
   avatarColorScreen.hide();
+  tournamentSetupScreen.hide();
   tournamentWaitingScreen.hide();
   tournamentBracketScreen.hide();
 }
@@ -461,16 +464,27 @@ function joinOnlineRoom(code: string): void {
   connectOnline({ kind: 'joinRoom', code });
 }
 
-// Campeonato: MESMA conexão WS toca a fila de espera, a chave em si, e
-// TODAS as partidas do meu lado da chave em sequência (quartas -> semi ->
-// final), diferente de connectOnline (1 partida só) — por isso os
-// callbacks de partida (onAssigned/onState) aqui não terminam a conexão
-// quando uma partida acaba, só resetam `matchStarted` pra próxima 'state'
-// iniciar a partida seguinte quando ela vier.
-async function connectTournament(): Promise<void> {
+// Como entrar no campeonato (ver TournamentSetupScreen): sozinho (1v1,
+// fila direta) ou criando/entrando num GRUPO (dupla/trio, igual "Chamar
+// amigo" — só que o "convite" aqui forma uma vaga da chave, não uma
+// partida isolada). `joinTeam` é usado tanto ao clicar "entrar com
+// código" quanto pelo link de convite (?tournamentTeam=CODE).
+type TournamentJoinMode = { kind: 'solo' } | { kind: 'createTeam'; teamSize: number } | { kind: 'joinTeam'; code: string };
+
+function buildTournamentTeamLink(code: string): string {
+  return `${window.location.origin}${window.location.pathname}?tournamentTeam=${code}`;
+}
+
+// Campeonato: MESMA conexão WS toca a formação do time (se dupla/trio), a
+// fila de espera, a chave em si, e TODAS as partidas do meu lado da chave
+// em sequência (quartas -> semi -> final), diferente de connectOnline (1
+// partida só) — por isso os callbacks de partida (onAssigned/onState)
+// aqui não terminam a conexão quando uma partida acaba, só resetam
+// `matchStarted` pra próxima 'state' iniciar a partida seguinte quando
+// ela vier.
+async function connectTournament(mode: TournamentJoinMode): Promise<void> {
   appScreen = 'tournamentWaiting';
   hideAllScreens();
-  tournamentWaitingScreen.show(progression);
 
   const authToken = supabase ? (await supabase.auth.getSession()).data.session?.access_token : undefined;
 
@@ -481,7 +495,9 @@ async function connectTournament(): Promise<void> {
 
   client.connect({
     onOpen: () => {
-      client.requestTournamentJoin(displayName, avatarColor, authToken);
+      if (mode.kind === 'solo') client.requestTournamentJoin(displayName, avatarColor, authToken);
+      else if (mode.kind === 'createTeam') client.requestTournamentCreateTeam(mode.teamSize, displayName, avatarColor, authToken);
+      else client.requestTournamentJoinTeam(mode.code, displayName, avatarColor, authToken);
     },
     onAssigned: (playerId, names, colors) => {
       assignedPlayerId = playerId;
@@ -520,6 +536,20 @@ async function connectTournament(): Promise<void> {
         goToMenuWithNotice(t('matchmaking.online.connectionFailed'));
       }
     },
+    onTournamentTeamCreated: () => {
+      // O servidor manda 'tournamentTeamWaiting' logo em seguida, já com
+      // o retrato completo (teamSize/membros) — essa mensagem aqui só
+      // confirma que o código existe, não precisa fazer nada com a UI.
+    },
+    onTournamentTeamNotFound: () => {
+      onlineClient = null;
+      goToMenuWithNotice(t('tournament.teamNotFound'));
+    },
+    onTournamentTeamWaiting: (team) => {
+      appScreen = 'tournamentWaiting';
+      hideAllScreens();
+      tournamentWaitingScreen.showTeamFormation(team, buildTournamentTeamLink(team.code), displayName);
+    },
     onTournament: (tournament, yourSlot) => {
       lastTournamentSnapshot = tournament;
       lastTournamentYourSlot = yourSlot;
@@ -527,8 +557,8 @@ async function connectTournament(): Promise<void> {
       if (tournament.status === 'waiting') {
         appScreen = 'tournamentWaiting';
         hideAllScreens();
-        tournamentWaitingScreen.show(progression);
-        tournamentWaitingScreen.update(tournament);
+        const myTeamNames = yourSlot !== null ? (tournament.teams[yourSlot]?.names ?? [displayName]) : [displayName];
+        tournamentWaitingScreen.showTournamentQueue(tournament, myTeamNames, displayName, progression);
         return;
       }
 
@@ -547,8 +577,19 @@ async function connectTournament(): Promise<void> {
   });
 }
 
-function goToTournament(): void {
-  void connectTournament();
+function goToTournamentSetup(): void {
+  appScreen = 'tournamentSetup';
+  hideAllScreens();
+  tournamentSetupScreen.show();
+}
+
+function onTournamentSetupChoice(choice: TournamentSetupChoice): void {
+  if (choice.kind === 'solo') void connectTournament({ kind: 'solo' });
+  else void connectTournament({ kind: 'createTeam', teamSize: choice.teamSize });
+}
+
+function joinTournamentTeamByCode(code: string): void {
+  void connectTournament({ kind: 'joinTeam', code });
 }
 
 // "Sair" tanto na tela de espera (ainda não começou, é só desistir da
@@ -761,7 +802,7 @@ const menuScreen = new MenuScreen(
   goToReplaysList,
   goToMatchSettings,
   goToAvatarColor,
-  goToTournament,
+  goToTournamentSetup,
   (name) => {
     displayName = name;
   },
@@ -769,6 +810,7 @@ const menuScreen = new MenuScreen(
 const difficultyScreen = new DifficultyScreen(goToMatchmaking, goToMenu);
 const matchSettingsScreen = new MatchSettingsScreen(onMatchSettingsChange, goToMenu);
 const avatarColorScreen = new AvatarColorScreen(onAvatarColorChange, goToMenu);
+const tournamentSetupScreen = new TournamentSetupScreen(onTournamentSetupChoice, goToMenu);
 const tournamentWaitingScreen = new TournamentWaitingScreen(leaveTournament);
 const tournamentBracketScreen = new TournamentBracketScreen(leaveTournament);
 const matchmakingScreen = new MatchmakingScreen(onMatchmakingCancel, onMatchmakingStartNow);
@@ -782,9 +824,17 @@ const replayOverlay = new ReplayOverlay(reactToGoalReplay, saveGoalReplay, onRep
 // entrar na mesma sala de novo (o código já foi consumido ou pode ter
 // expirado).
 const inviteRoomCode = new URLSearchParams(window.location.search).get('room');
+// Convite de TIME de campeonato (?tournamentTeam=CODE, ver
+// TournamentSetupScreen/buildTournamentTeamLink) — mesma ideia do convite
+// de sala, mas pra entrar num GRUPO se formando (dupla/trio), não numa
+// partida isolada.
+const inviteTournamentTeamCode = new URLSearchParams(window.location.search).get('tournamentTeam');
 if (inviteRoomCode) {
   window.history.replaceState(null, '', window.location.pathname);
   joinOnlineRoom(inviteRoomCode);
+} else if (inviteTournamentTeamCode) {
+  window.history.replaceState(null, '', window.location.pathname);
+  joinTournamentTeamByCode(inviteTournamentTeamCode);
 } else {
   goToMenu();
 }

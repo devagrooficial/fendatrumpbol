@@ -28,6 +28,7 @@ import type {
   TournamentMatchInfo,
   TournamentRound,
   TournamentSnapshot,
+  TournamentTeamFormationSnapshot,
   TournamentTeamInfo,
 } from '../../src/futtrool/net/protocol';
 import { ADMIN_EMAIL } from './adminConfig';
@@ -489,16 +490,20 @@ setInterval(() => {
 // competitiva); quem desconecta ENQUANTO espera a próxima rodada também
 // perde por W.O. assim que a vaga dele seria necessária.
 //
-// Só 1v1 (TOURNAMENT_TEAM_SIZE) funciona nessa entrega — o protocolo já é
-// genérico (teamSize em 'tournamentJoin') pensando em dupla/trio como
-// extensão futura, sem precisar mudar o formato da chave depois.
+// 1v1, 2v2 e 3v3: uma vaga da chave é sempre um GRUPO de pessoas de
+// verdade jogando junto (nunca pareamento aleatório tipo quickMatch) — em
+// dupla/trio, primeiro se forma o GRUPO por código ('tournamentCreateTeam'/
+// 'tournamentJoinTeam', igual ao "Chamar amigo" das partidas normais), e
+// só quando o grupo completa `teamSize` gente é que ele vira uma vaga de
+// verdade na fila do torneio (registerTeamInTournament). 1v1 pula essa
+// etapa (não tem o que "esperar" — uma pessoa já é o grupo inteiro),
+// entra direto ('tournamentJoin').
 //
 // Estado 100% em memória, sem retomada entre reinícios do processo (igual
 // qualquer partida em andamento hoje) — public.tournaments (Supabase) é
 // só o REGISTRO público pro histórico/bracket, não uma fonte de retomada.
 // ---------------------------------------------------------------------------
 
-const TOURNAMENT_TEAM_SIZE = 1;
 const TOURNAMENT_SLOTS = 8;
 const TOURNAMENT_MATCH_SETTINGS: MatchSettings = { durationMs: MATCH.DURATION_MS, goalsToWin: MATCH.GOALS_TO_WIN };
 
@@ -545,13 +550,30 @@ type Tournament = {
   championSlot: number | null;
 };
 
+// Um único membro (ainda não formando um TournamentTeam de verdade) —
+// usado só enquanto um GRUPO de dupla/trio está se formando via código
+// (ver 'tournamentCreateTeam'/'tournamentJoinTeam'), antes de virar uma
+// vaga de verdade na fila do campeonato.
+type PendingTeamMember = { ws: WebSocket; name: string; email: string | null; avatarColor: AvatarColor };
+
+type PendingTournamentTeam = {
+  code: string;
+  teamSize: number;
+  members: PendingTeamMember[];
+};
+
 const openTournaments = new Map<number, Tournament>(); // teamSize -> torneio ainda esperando gente
 const allTournaments = new Map<string, Tournament>();
 const tournamentSpectators = new Map<string, Set<WebSocket>>();
 // vaga de torneio de cada socket ENQUANTO ainda espera vaga (status
 // 'waiting') — depois que a chave começa pra valer, quem sabe a vaga de
-// cada um é a própria Room (igual quickMatch).
+// cada um é a própria Room (igual quickMatch). Todo mundo de uma MESMA
+// vaga (dupla/trio) aponta pro mesmo {tournamentId, slot}.
 const socketTournamentQueueSlot = new Map<WebSocket, { tournamentId: string; slot: number }>();
+// Grupo (dupla/trio) ainda se formando por código, antes de virar vaga —
+// ver PendingTournamentTeam acima.
+const pendingTournamentTeams = new Map<string, PendingTournamentTeam>();
+const socketPendingTeamCode = new Map<WebSocket, string>();
 // Handler de 'close' de quem já GANHOU a rodada e está esperando a outra
 // partida da mesma chave terminar — precisa disso separado do
 // socketTournamentQueueSlot de cima (que é só pra fase de fila).
@@ -839,36 +861,131 @@ function getOrCreateOpenTournament(teamSize: number): Tournament | 'full' {
   return t;
 }
 
-function joinTournament(ws: WebSocket, name: string, email: string | null, avatarColor: AvatarColor): void {
-  const teamSize = TOURNAMENT_TEAM_SIZE; // fixo em 1 nessa entrega, ver comentário no topo da seção
+// Registra um GRUPO JÁ COMPLETO (1, 2 ou 3 pessoas — sempre `teamSize`
+// gente) como UMA vaga na fila de um campeonato aberto — usado tanto pelo
+// caminho direto (1v1, ver 'tournamentJoin') quanto por um grupo que
+// acabou de completar via código (ver joinTournamentTeam abaixo). Nunca
+// chamado com um grupo pela metade.
+function registerTeamInTournament(teamSize: number, members: PendingTeamMember[]): void {
   const result = getOrCreateOpenTournament(teamSize);
   if (result === 'full') {
-    send(ws, { type: 'tournamentFull' });
+    for (const m of members) send(m.ws, { type: 'tournamentFull' });
     return;
   }
   const t = result;
   const slot = t.teams.length;
-  const team: TournamentTeam = { slot, sockets: [ws], names: [name], emails: [email], avatarColors: [avatarColor] };
+  const team: TournamentTeam = {
+    slot,
+    sockets: members.map((m) => m.ws),
+    names: members.map((m) => m.name),
+    emails: members.map((m) => m.email),
+    avatarColors: members.map((m) => m.avatarColor),
+  };
   t.teams.push(team);
-  socketTournamentQueueSlot.set(ws, { tournamentId: t.id, slot });
+  for (const ws of team.sockets) socketTournamentQueueSlot.set(ws, { tournamentId: t.id, slot });
 
   if (t.teams.length >= TOURNAMENT_SLOTS) startTournament(t);
   else broadcastTournament(t);
 }
 
+function joinTournament(ws: WebSocket, name: string, email: string | null, avatarColor: AvatarColor): void {
+  registerTeamInTournament(1, [{ ws, name, email, avatarColor }]);
+}
+
+function generateTeamCode(): string {
+  let code: string;
+  do {
+    code = Array.from({ length: ROOM_CODE_LENGTH }, () => ROOM_CODE_CHARS[Math.floor(Math.random() * ROOM_CODE_CHARS.length)]).join('');
+  } while (pendingTournamentTeams.has(code));
+  return code;
+}
+
+function teamFormationSnapshot(team: PendingTournamentTeam): TournamentTeamFormationSnapshot {
+  return { code: team.code, teamSize: team.teamSize, members: team.members.map((m) => ({ name: m.name, email: m.email })) };
+}
+
+function broadcastTeamWaiting(team: PendingTournamentTeam): void {
+  const snapshot = teamFormationSnapshot(team);
+  for (const m of team.members) send(m.ws, { type: 'tournamentTeamWaiting', team: snapshot });
+}
+
+// Cria um grupo (dupla/trio) esperando completar — igual createRoom pras
+// partidas normais, mas o "código" aqui não abre uma partida, só junta
+// gente até formar UMA vaga da chave (ver registerTeamInTournament).
+// teamSize=1 não faz sentido de esperar nada — trata como entrada direta.
+function createTournamentTeam(ws: WebSocket, teamSize: number, name: string, email: string | null, avatarColor: AvatarColor): void {
+  if (teamSize <= 1) {
+    joinTournament(ws, name, email, avatarColor);
+    return;
+  }
+  const code = generateTeamCode();
+  const team: PendingTournamentTeam = { code, teamSize, members: [{ ws, name, email, avatarColor }] };
+  pendingTournamentTeams.set(code, team);
+  socketPendingTeamCode.set(ws, code);
+  send(ws, { type: 'tournamentTeamCreated', code });
+  broadcastTeamWaiting(team);
+}
+
+function joinTournamentTeam(ws: WebSocket, code: string, name: string, email: string | null, avatarColor: AvatarColor): void {
+  const team = pendingTournamentTeams.get(code);
+  if (!team) {
+    send(ws, { type: 'tournamentTeamNotFound' });
+    return;
+  }
+  team.members.push({ ws, name, email, avatarColor });
+  socketPendingTeamCode.set(ws, code);
+
+  if (team.members.length >= team.teamSize) {
+    pendingTournamentTeams.delete(code);
+    for (const m of team.members) socketPendingTeamCode.delete(m.ws);
+    registerTeamInTournament(team.teamSize, team.members);
+  } else {
+    broadcastTeamWaiting(team);
+  }
+}
+
+// Sai do GRUPO ainda se formando (código, antes de completar) — chamado
+// tanto por 'tournamentLeaveQueue' quanto no 'close' geral do socket.
+function removeFromPendingTeam(ws: WebSocket): void {
+  const code = socketPendingTeamCode.get(ws);
+  if (!code) return;
+  socketPendingTeamCode.delete(ws);
+  const team = pendingTournamentTeams.get(code);
+  if (!team) return;
+
+  const idx = team.members.findIndex((m) => m.ws === ws);
+  if (idx !== -1) team.members.splice(idx, 1);
+
+  if (team.members.length === 0) {
+    pendingTournamentTeams.delete(code);
+  } else {
+    broadcastTeamWaiting(team);
+  }
+}
+
 // Sai da fila ENQUANTO ainda espera vaga (chamado tanto por
 // 'tournamentLeaveQueue' quanto no 'close' geral do socket) — não faz
 // nada se o torneio já começou pra valer (nesse ponto, sair é W.O. de
-// verdade, tratado por handleDisconnect/watchTournamentDisconnect).
+// verdade, tratado por handleDisconnect/watchTournamentDisconnect). Como
+// uma vaga pode ser um GRUPO de várias pessoas, qualquer uma delas saindo
+// tira a vaga INTEIRA (não dá pra jogar faltando gente) — todo mundo da
+// mesma vaga aponta pro mesmo {tournamentId, slot}.
 function removeFromTournamentQueue(ws: WebSocket): void {
   const info = socketTournamentQueueSlot.get(ws);
   if (!info) return;
   const t = allTournaments.get(info.tournamentId);
-  socketTournamentQueueSlot.delete(ws);
-  if (!t || t.status !== 'waiting') return;
+  if (!t || t.status !== 'waiting') {
+    socketTournamentQueueSlot.delete(ws);
+    return;
+  }
 
   const idx = t.teams.findIndex((team) => team.slot === info.slot);
-  if (idx === -1) return;
+  if (idx === -1) {
+    socketTournamentQueueSlot.delete(ws);
+    return;
+  }
+  const removedTeam = t.teams[idx]!;
+  for (const s of removedTeam.sockets) socketTournamentQueueSlot.delete(s);
   t.teams.splice(idx, 1);
   // Renumera as vagas restantes (senão sobra buraco no meio da fila e o
   // pareamento das quartas, que assume vagas 0-7 contíguas, quebra).
@@ -998,7 +1115,30 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    if (parsed.type === 'tournamentCreateTeam') {
+      const email = await verifyEmail(parsed.authToken);
+      if (email && bannedEmails.has(email.toLowerCase())) {
+        send(ws, { type: 'banned' });
+        ws.close();
+        return;
+      }
+      createTournamentTeam(ws, clampTeamSize(parsed.teamSize), sanitizeName(parsed.name), email, sanitizeAvatarColor(parsed.avatarColor));
+      return;
+    }
+
+    if (parsed.type === 'tournamentJoinTeam') {
+      const email = await verifyEmail(parsed.authToken);
+      if (email && bannedEmails.has(email.toLowerCase())) {
+        send(ws, { type: 'banned' });
+        ws.close();
+        return;
+      }
+      joinTournamentTeam(ws, parsed.code, sanitizeName(parsed.name), email, sanitizeAvatarColor(parsed.avatarColor));
+      return;
+    }
+
     if (parsed.type === 'tournamentLeaveQueue') {
+      removeFromPendingTeam(ws);
       removeFromTournamentQueue(ws);
       return;
     }
@@ -1021,6 +1161,7 @@ wss.on('connection', (ws) => {
     removeFromPendingLobby(ws);
     adminObservers.delete(ws);
     stopSpectating(ws);
+    removeFromPendingTeam(ws);
     removeFromTournamentQueue(ws);
     clearTournamentWaitWatcher(ws);
     for (const set of tournamentSpectators.values()) set.delete(ws);

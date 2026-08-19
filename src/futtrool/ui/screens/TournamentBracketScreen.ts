@@ -9,11 +9,15 @@ import { t } from '../../i18n';
 import { Audio } from '../../audio/Audio';
 import type { TournamentMatchInfo, TournamentRound, TournamentSnapshot } from '../../net/protocol';
 
-function teamLabel(t: TournamentSnapshot, slot: number | null): string {
-  if (slot === null) return '—';
-  const team = t.teams[slot];
-  if (!team) return '—';
+function teamLabel(snapshot: TournamentSnapshot, slot: number | null): string {
+  if (slot === null) return t('tournament.bracket.tbd');
+  const team = snapshot.teams[slot];
+  if (!team) return t('tournament.bracket.tbd');
   return team.names.join(' & ');
+}
+
+function initials(name: string): string {
+  return name.trim().slice(0, 2).toUpperCase() || '?';
 }
 
 function matchBoxHtml(snapshot: TournamentSnapshot, match: TournamentMatchInfo, mySlot: number | null): string {
@@ -24,6 +28,7 @@ function matchBoxHtml(snapshot: TournamentSnapshot, match: TournamentMatchInfo, 
   const isMineA = mySlot !== null && mySlot === match.teamSlotA;
   const isMineB = mySlot !== null && mySlot === match.teamSlotB;
 
+  const statusClass = `bracket__status-pill bracket__status-pill--${match.status}`;
   const statusLabel =
     match.status === 'playing'
       ? t('tournament.bracket.playing')
@@ -33,18 +38,20 @@ function matchBoxHtml(snapshot: TournamentSnapshot, match: TournamentMatchInfo, 
           : t('tournament.bracket.done')
         : t('tournament.bracket.pending');
 
-  const rowHtml = (name: string, score: number, isWinner: boolean, isMine: boolean): string => `
-    <div class="bracket__team${isWinner ? ' bracket__team--winner' : ''}${isMine ? ' bracket__team--mine' : ''}">
+  const rowHtml = (name: string, score: number, isWinner: boolean, isMine: boolean, known: boolean): string => `
+    <div class="bracket__team${isWinner ? ' bracket__team--winner' : ''}${isMine ? ' bracket__team--mine' : ''}${!known ? ' bracket__team--tbd' : ''}">
+      <span class="bracket__team-avatar">${known ? initials(name) : '?'}</span>
       <span class="bracket__team-name">${name}</span>
-      ${match.status !== 'pending' ? `<span class="bracket__team-score">${score}</span>` : ''}
+      ${match.status !== 'pending' && known ? `<span class="bracket__team-score">${score}</span>` : ''}
+      ${isWinner ? '<span class="bracket__team-crown">👑</span>' : ''}
     </div>
   `;
 
   return `
     <div class="bracket__match bracket__match--${match.status}">
-      <p class="bracket__match-status">${statusLabel}</p>
-      ${rowHtml(nameA, match.scoreA, winnerA, isMineA)}
-      ${rowHtml(nameB, match.scoreB, winnerB, isMineB)}
+      <span class="${statusClass}">${statusLabel}</span>
+      ${rowHtml(nameA, match.scoreA, winnerA, isMineA, match.teamSlotA !== null)}
+      ${rowHtml(nameB, match.scoreB, winnerB, isMineB, match.teamSlotB !== null)}
     </div>
   `;
 }
@@ -114,12 +121,17 @@ export class TournamentBracketScreen {
       </div>
       <div class="bracket__round bracket__round--sf">
         <p class="bracket__round-title">${t('tournament.bracket.semifinal')}</p>
-        <div class="bracket__round-matches">${sf.map((m) => matchBoxHtml(snapshot, m, mySlot)).join('')}</div>
+        <div class="bracket__round-matches">
+          <div class="bracket__pair bracket__pair--sf">${sf.map((m) => matchBoxHtml(snapshot, m, mySlot)).join('')}</div>
+        </div>
       </div>
       <div class="bracket__round bracket__round--final">
         <p class="bracket__round-title">${t('tournament.bracket.final')}</p>
         <div class="bracket__round-matches">${final ? matchBoxHtml(snapshot, final, mySlot) : ''}</div>
-        <div class="bracket__trophy${championName ? ' bracket__trophy--won' : ''}">🏆</div>
+        <div class="bracket__trophy${championName ? ' bracket__trophy--won' : ''}">
+          <span class="bracket__trophy-icon">🏆</span>
+          ${championName ? `<span class="bracket__trophy-name">${championName}</span>` : ''}
+        </div>
       </div>
     `;
 

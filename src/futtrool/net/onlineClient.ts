@@ -4,7 +4,7 @@
 // decide o que acontece é sempre o servidor (ver server/src/index.ts).
 
 import type { AvatarColor, Command, GameState, MatchEvent, MatchSettings, PlayerId, TeamId } from '../core/types';
-import type { ClientMessage, ServerMessage, TournamentSnapshot } from './protocol';
+import type { ClientMessage, ServerMessage, TournamentSnapshot, TournamentTeamFormationSnapshot } from './protocol';
 
 // wss:// em produção (o site já é HTTPS, então ws:// puro seria bloqueado
 // como "conteúdo misto") — só cai pro localhost se alguém sobrescrever via
@@ -36,6 +36,11 @@ export type OnlineClientCallbacks = {
   // mensagens, então não precisa de callback nenhum pra elas.
   onTournament?: (tournament: TournamentSnapshot, yourSlot: number | null) => void;
   onTournamentFull?: () => void;
+  // Dupla/trio: grupo se formando via código, antes de virar vaga de
+  // verdade na fila (ver protocol.ts 'tournamentCreateTeam'/'tournamentJoinTeam').
+  onTournamentTeamCreated?: (code: string) => void;
+  onTournamentTeamNotFound?: () => void;
+  onTournamentTeamWaiting?: (team: TournamentTeamFormationSnapshot) => void;
 };
 
 export class OnlineClient {
@@ -63,6 +68,9 @@ export class OnlineClient {
       else if (message.type === 'banned') callbacks.onBanned();
       else if (message.type === 'tournament') callbacks.onTournament?.(message.tournament, message.yourSlot);
       else if (message.type === 'tournamentFull') callbacks.onTournamentFull?.();
+      else if (message.type === 'tournamentTeamCreated') callbacks.onTournamentTeamCreated?.(message.code);
+      else if (message.type === 'tournamentTeamNotFound') callbacks.onTournamentTeamNotFound?.();
+      else if (message.type === 'tournamentTeamWaiting') callbacks.onTournamentTeamWaiting?.(message.team);
     });
 
     ws.addEventListener('close', () => callbacks.onClose());
@@ -94,11 +102,19 @@ export class OnlineClient {
     this.sendRaw({ type: 'startNow' });
   }
 
-  // Campeonato (quartas -> semifinal -> final, 8 vagas) — só 1v1 funciona
-  // de verdade nessa entrega, mas o protocolo já aceita teamSize genérico
-  // pra dupla/trio serem só uma extensão futura (ver server/src/index.ts).
+  // Campeonato 1v1 (quartas -> semifinal -> final, 8 vagas) — entra
+  // sozinho direto na fila. Pra dupla/trio, ver requestTournamentCreateTeam/
+  // requestTournamentJoinTeam abaixo (precisa formar o grupo primeiro).
   requestTournamentJoin(name: string, avatarColor: AvatarColor, authToken?: string): void {
-    this.sendRaw({ type: 'tournamentJoin', teamSize: 1, name, avatarColor, authToken });
+    this.sendRaw({ type: 'tournamentJoin', name, avatarColor, authToken });
+  }
+
+  requestTournamentCreateTeam(teamSize: number, name: string, avatarColor: AvatarColor, authToken?: string): void {
+    this.sendRaw({ type: 'tournamentCreateTeam', teamSize, name, avatarColor, authToken });
+  }
+
+  requestTournamentJoinTeam(code: string, name: string, avatarColor: AvatarColor, authToken?: string): void {
+    this.sendRaw({ type: 'tournamentJoinTeam', code, name, avatarColor, authToken });
   }
 
   requestTournamentLeaveQueue(): void {

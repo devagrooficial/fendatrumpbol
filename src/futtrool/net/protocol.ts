@@ -47,20 +47,31 @@ export type ClientMessage =
   // ela continua recebendo 'adminRooms' normalmente).
   | { type: 'spectate'; roomId: string }
   | { type: 'unspectate' }
-  // Entra na fila de um campeonato (torneio de eliminação simples: quartas
-  // → semifinal → final, 8 vagas). Igual quickMatch, entra num torneio já
-  // esperando gente do mesmo teamSize, ou cria um novo se não tiver
-  // nenhum. Só teamSize 1 (1v1) funciona de verdade nessa entrega — o
-  // protocolo já aceita outros valores porque a tela do cliente é
-  // genérica, mas o servidor recusa (ver TOURNAMENT_TEAM_SIZE em
-  // server/src/index.ts) até dupla/trio serem implementados. Mesma regra
-  // de authToken do quickMatch: opcional, convidado continua podendo
-  // jogar torneio, só não aparece com nome/email de verdade no bracket.
-  | { type: 'tournamentJoin'; teamSize: number; name: string; avatarColor: AvatarColor; authToken?: string }
+  // Entra SOZINHO na fila de um campeonato 1v1 (torneio de eliminação
+  // simples: quartas → semifinal → final, 8 vagas). Igual quickMatch,
+  // entra num torneio já esperando gente do mesmo teamSize, ou cria um
+  // novo se não tiver nenhum. Pra teamSize > 1 (dupla/trio), ver
+  // 'tournamentCreateTeam'/'tournamentJoinTeam' abaixo — uma vaga da chave
+  // só é formada por várias PESSOAS JUNTAS (não pareamento aleatório tipo
+  // quickMatch), então precisa de um passo a mais antes de entrar na fila
+  // de verdade. Mesma regra de authToken do quickMatch: opcional,
+  // convidado continua podendo jogar torneio, só não aparece com nome/
+  // email de verdade no bracket.
+  | { type: 'tournamentJoin'; name: string; avatarColor: AvatarColor; authToken?: string }
+  // Cria um GRUPO pra formar uma vaga de campeonato em dupla/trio — igual
+  // ao "Chamar amigo" das partidas normais (createRoom/joinRoom): gera um
+  // código curto, e só quando `teamSize` pessoas tiverem entrado com esse
+  // código (ver 'tournamentJoinTeam') a vaga INTEIRA entra de vez na fila
+  // do torneio (ver 'tournamentJoin' acima). teamSize=1 aqui não faz
+  // sentido (não tem o que "esperar") — o servidor trata como entrada
+  // direta, igual 'tournamentJoin'.
+  | { type: 'tournamentCreateTeam'; teamSize: number; name: string; avatarColor: AvatarColor; authToken?: string }
+  | { type: 'tournamentJoinTeam'; code: string; name: string; avatarColor: AvatarColor; authToken?: string }
   // Sai da fila ENQUANTO ainda espera vaga (torneio não começou pra
-  // valer) — depois que a chave já foi montada, sair vira W.O. de verdade
-  // (ver 'opponentLeft'/regras de walkover no servidor), não dá mais pra
-  // "desistir da fila" sem consequência.
+  // valer, ou o GRUPO ainda não encheu) — depois que a chave já foi
+  // montada, sair vira W.O. de verdade (ver 'opponentLeft'/regras de
+  // walkover no servidor), não dá mais pra "desistir da fila" sem
+  // consequência.
   | { type: 'tournamentLeaveQueue' }
   // Assiste à chave de um torneio (ativo ou já encerrado) sem participar
   // — usado tanto por quem já foi eliminado (continua vendo o resto) e
@@ -98,6 +109,15 @@ export type ServerMessage =
   // Todos os torneios abertos já estão no limite de capacidade do
   // servidor (ver MAX_CONCURRENT_TOURNAMENTS) — tenta de novo mais tarde.
   | { type: 'tournamentFull' }
+  // Resposta a 'tournamentCreateTeam' bem-sucedido — código pra compartilhar
+  // com quem mais vai completar o time (mesma ideia do link de
+  // "Chamar amigo").
+  | { type: 'tournamentTeamCreated'; code: string }
+  | { type: 'tournamentTeamNotFound' }
+  // Progresso de um GRUPO se formando (antes de entrar na fila do torneio
+  // de verdade — ver 'tournamentCreateTeam'/'tournamentJoinTeam') —
+  // mandado toda vez que alguém entra, até completar `teamSize` gente.
+  | { type: 'tournamentTeamWaiting'; team: TournamentTeamFormationSnapshot }
   // Estado completo do torneio — mandado sempre que algo muda (gente
   // entra na fila, partida começa/termina, campeão é decidido). O mesmo
   // tipo serve tanto pra "ainda esperando gente" (status 'waiting') quanto
@@ -130,6 +150,15 @@ export type TournamentMatchInfo = {
   // Preenchido só quando o motivo do fim foi alguém sair no meio (W.O.),
   // não uma vitória de verdade em campo.
   forfeitedTeamSlot: number | null;
+};
+
+// Grupo se formando pra virar UMA vaga do campeonato (dupla/trio) — antes
+// de entrar na fila de verdade, ver 'tournamentCreateTeam'/
+// 'tournamentJoinTeam' acima.
+export type TournamentTeamFormationSnapshot = {
+  code: string;
+  teamSize: number;
+  members: { name: string; email: string | null }[];
 };
 
 export type TournamentSnapshot = {
