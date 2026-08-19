@@ -21,7 +21,7 @@ import type { Command, GameState, PlayerId, TeamId } from '../../src/futtrool/co
 import type { ClientMessage, ServerMessage } from '../../src/futtrool/net/protocol';
 
 const PORT = Number(process.env.PORT ?? 8787);
-const MAX_TEAM_SIZE = 2; // 1v1 e 2v2 hoje — 3v3 é só subir esse número
+const MAX_TEAM_SIZE = 3; // 1v1, 2v2 e 3v3 — pra ir além é só subir esse número de novo
 
 // Mobile derruba conexão sem avisar (troca de wifi/4G, tela bloqueando) —
 // sem isso o servidor keeps reaplicando o ÚLTIMO comando válido pra sempre

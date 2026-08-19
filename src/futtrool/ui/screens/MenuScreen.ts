@@ -43,6 +43,10 @@ export class MenuScreen {
           <button type="button" class="screen__button screen__button--secondary" data-invite-friend="2">${t('menu.inviteFriend2v2')}</button>
         </div>
         <div class="screen__button-row">
+          <button type="button" class="screen__button screen__button--secondary" data-play-online="3">${t('menu.playOnline3v3')}</button>
+          <button type="button" class="screen__button screen__button--secondary" data-invite-friend="3">${t('menu.inviteFriend3v3')}</button>
+        </div>
+        <div class="screen__button-row">
           <button type="button" class="screen__button screen__button--secondary" data-inventory>${t('menu.inventory')}</button>
           <button type="button" class="screen__button screen__button--secondary" data-shop>${t('menu.shop')}</button>
         </div>
@@ -89,8 +93,8 @@ export class MenuScreen {
       !levelEl ||
       !coinsEl ||
       !playButton ||
-      playOnlineButtons.length !== 2 ||
-      inviteFriendButtons.length !== 2 ||
+      playOnlineButtons.length !== 3 ||
+      inviteFriendButtons.length !== 3 ||
       !inventoryButton ||
       !shopButton ||
       !replaysButton ||

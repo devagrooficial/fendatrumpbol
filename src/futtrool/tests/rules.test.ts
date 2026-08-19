@@ -248,3 +248,46 @@ describe('2v2 (roster de 2 jogadores por time)', () => {
     expect(Object.keys(state.players)).toHaveLength(4);
   });
 });
+
+describe('3v3 (roster de 3 jogadores por time — prova que generaliza, não só 2)', () => {
+  const TEAM3_ROSTER: Record<TeamId, PlayerId[]> = {
+    teamA: ['teamA-0', 'teamA-1', 'teamA-2'],
+    teamB: ['teamB-0', 'teamB-1', 'teamB-2'],
+  };
+
+  it('cria os 6 jogadores sem sobreposição de posição', () => {
+    const { players } = createKickoffFormation(TEAM3_ROSTER);
+    const ids = Object.keys(players) as PlayerId[];
+    expect(ids).toHaveLength(6);
+
+    const positions = ids.map((id) => `${players[id]!.pos.x},${players[id]!.pos.y}`);
+    expect(new Set(positions).size).toBe(6);
+
+    for (const id of TEAM3_ROSTER.teamA) expect(players[id]!.pos.x).toBeLessThan(FIELD.WIDTH / 2);
+    for (const id of TEAM3_ROSTER.teamB) expect(players[id]!.pos.x).toBeGreaterThan(FIELD.WIDTH / 2);
+  });
+
+  it('roda uma partida inteira de 6 jogadores sem erros', () => {
+    let state = createMatchState(1, 1, TEAM3_ROSTER);
+    state = playThroughKickoff(state);
+
+    const sixWayCommands: Record<PlayerId, Command> = {
+      'teamA-0': { ...NO_MOVE, move: { x: 1, y: 0 } },
+      'teamA-1': { ...NO_MOVE, move: { x: 1, y: 1 } },
+      'teamA-2': { ...NO_MOVE, move: { x: 1, y: -1 } },
+      'teamB-0': { ...NO_MOVE, move: { x: -1, y: 0 } },
+      'teamB-1': { ...NO_MOVE, move: { x: -1, y: -1 } },
+      'teamB-2': { ...NO_MOVE, move: { x: -1, y: 1 } },
+    };
+
+    for (let i = 0; i < 600; i++) {
+      state = step(state, sixWayCommands, DT).state;
+      for (const player of Object.values(state.players)) {
+        expect(Number.isFinite(player.pos.x)).toBe(true);
+        expect(Number.isFinite(player.pos.y)).toBe(true);
+      }
+    }
+
+    expect(Object.keys(state.players)).toHaveLength(6);
+  });
+});
