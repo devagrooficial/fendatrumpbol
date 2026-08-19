@@ -234,10 +234,17 @@ export class EndGameScreen {
       this.statsPlayersEl.append(row);
     }
 
+    // Nível máximo (MAX_LEVEL, ver progression/economy.ts): xpToNextLevel
+    // vira 0 nesse ponto — não dá pra mostrar "X / 0 XP" nem dividir por
+    // zero pra calcular a barra, então troca pelo rótulo fixo de "no topo".
+    const isMaxLevel = data.levelAfter.xpToNextLevel === 0;
+
     this.gainLabelEl.textContent = t('endgame.level', { level: data.levelAfter.level });
     this.gainValueEl.textContent = t('endgame.xpGained', { xp: data.reward.xp });
     this.levelLabelEl.textContent = t('endgame.level', { level: data.levelAfter.level });
-    this.levelValueEl.textContent = `${data.levelAfter.levelXp} / ${data.levelAfter.xpToNextLevel} XP`;
+    this.levelValueEl.textContent = isMaxLevel
+      ? t('endgame.levelMax')
+      : `${data.levelAfter.levelXp} / ${data.levelAfter.xpToNextLevel} XP`;
 
     this.exitButton.textContent = t('endgame.exit.reward', { coins: data.exitCoins });
     this.rematchButton.textContent = t('endgame.rematch.reward', { coins: data.reward.coins });
@@ -251,7 +258,7 @@ export class EndGameScreen {
 
     requestAnimationFrame(() => {
       this.gainFillEl.style.width = '100%';
-      const pct = Math.min(100, (data.levelAfter.levelXp / data.levelAfter.xpToNextLevel) * 100);
+      const pct = isMaxLevel ? 100 : Math.min(100, (data.levelAfter.levelXp / data.levelAfter.xpToNextLevel) * 100);
       this.levelFillEl.style.width = `${pct}%`;
     });
   }

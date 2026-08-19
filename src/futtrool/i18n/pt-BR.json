@@ -89,6 +89,7 @@
   "endgame.assists": "Assist.",
   "endgame.xpGained": "+{xp} XP",
   "endgame.level": "Nível {level}",
+  "endgame.levelMax": "Nível máximo!",
   "endgame.opponent.online": "Adversário",
   "endgame.exit": "Sair",
   "endgame.exit.reward": "Sair +${coins}",

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { applyXp, calculateMatchReward, ECONOMY, splitExitReward, xpForLevel, type LevelProgress } from '../progression/economy';
+import { applyXp, calculateMatchReward, ECONOMY, MAX_LEVEL, splitExitReward, xpForLevel, type LevelProgress } from '../progression/economy';
 
 describe('xpForLevel', () => {
-  it('segue a fórmula 300 * n^1.35', () => {
+  it('segue a fórmula 300 * n^1.4', () => {
     expect(xpForLevel(1)).toBe(300);
-    expect(xpForLevel(2)).toBe(Math.round(300 * Math.pow(2, 1.35)));
+    expect(xpForLevel(2)).toBe(Math.round(300 * Math.pow(2, 1.4)));
   });
 
   it('cresce com o nível', () => {
@@ -74,5 +74,35 @@ describe('applyXp', () => {
     const next = applyXp(start, hugeGain);
     expect(next.level).toBe(3);
     expect(next.levelXp).toBe(10);
+  });
+
+  it('trava em MAX_LEVEL mesmo com XP suficiente pra passar disso', () => {
+    const start: LevelProgress = { level: MAX_LEVEL - 1, levelXp: 0, xpToNextLevel: xpForLevel(MAX_LEVEL - 1) };
+    // Ganho gigante, bem mais que o suficiente pra várias "subidas" — não
+    // existe nível 21, então tem que parar exatamente em MAX_LEVEL.
+    const next = applyXp(start, xpForLevel(MAX_LEVEL - 1) + xpForLevel(MAX_LEVEL) * 10);
+    expect(next.level).toBe(MAX_LEVEL);
+    expect(next.levelXp).toBe(0);
+    expect(next.xpToNextLevel).toBe(0);
+  });
+
+  it('já no MAX_LEVEL, XP ganho não faz nada (sem nível 21, sem sobrar XP acumulado)', () => {
+    const maxed: LevelProgress = { level: MAX_LEVEL, levelXp: 0, xpToNextLevel: 0 };
+    const next = applyXp(maxed, 99999);
+    expect(next).toEqual({ level: MAX_LEVEL, levelXp: 0, xpToNextLevel: 0 });
+  });
+
+  it('leva uma quantidade de XP total (nível 1 até MAX_LEVEL) compatível com ~1 ano de jogo casual', () => {
+    // Calibração (ver comentário de xpForLevel): ~4 partidas/dia, ~104 XP
+    // médio por partida (mix de vitória/derrota/gols) — não é uma conta
+    // exata de produto, só uma faixa saudável pra não regredir sem querer
+    // pra "sobe em 1 mês" ou "nunca sobe".
+    let total = 0;
+    for (let level = 1; level < MAX_LEVEL; level++) total += xpForLevel(level);
+    const avgXpPerMatch = 104;
+    const matchesPerDay = 4;
+    const daysToMax = total / avgXpPerMatch / matchesPerDay;
+    expect(daysToMax).toBeGreaterThan(300);
+    expect(daysToMax).toBeLessThan(450);
   });
 });

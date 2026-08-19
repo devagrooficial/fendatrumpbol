@@ -20,9 +20,19 @@ export const ECONOMY = {
   EXIT_COIN_FRACTION: 0.5,
 };
 
+// 20 níveis (pedido explícito: "montar 20 níveis com uma lógica que faça a
+// pessoa jogar por 1 ano pra alcançar o XP máximo") — calibrado assumindo
+// ~4 partidas/dia de jogo casual e uma média de ~104 XP por partida (mix
+// de XP_BASE + gols + vitória em cima da taxa de vitória esperada contra
+// bot Profissional, ~45%): nesse ritmo o nível 20 chega por volta do dia
+// 373 (~1 ano). Fórmula igual à anterior, só o expoente subiu de 1.35 pra
+// 1.4 pra bater com esse alvo sem mudar a "sensação" da curva (ainda
+// exponencial, níveis iniciais rápidos e finais mais lentos).
 export function xpForLevel(level: number): number {
-  return Math.round(300 * Math.pow(level, 1.35));
+  return Math.round(300 * Math.pow(level, 1.4));
 }
+
+export const MAX_LEVEL = 20;
 
 export type MatchOutcome = 'win' | 'loss' | 'draw';
 
@@ -73,15 +83,29 @@ export type LevelProgress = {
 
 // Aplica XP ganho, subindo de nível quantas vezes forem necessárias (cobre
 // o caso raro de um ganho gigante cruzar mais de um nível de uma vez).
+// Trava em MAX_LEVEL: XP ganho depois de já estar no topo simplesmente não
+// faz mais nada (sem nível 21, sem "XP de prestígio" acumulando à toa) —
+// xpToNextLevel vira 0 nesse ponto, o sinal pra UI mostrar "nível máximo"
+// em vez de uma barra de progresso.
 export function applyXp(progress: LevelProgress, xpGained: number): LevelProgress {
+  if (progress.level >= MAX_LEVEL) {
+    return { level: MAX_LEVEL, levelXp: 0, xpToNextLevel: 0 };
+  }
+
   let { level, levelXp } = progress;
   levelXp += xpGained;
 
   let threshold = xpForLevel(level);
-  while (levelXp >= threshold) {
+  while (level < MAX_LEVEL && levelXp >= threshold) {
     levelXp -= threshold;
     level += 1;
-    threshold = xpForLevel(level);
+    threshold = level < MAX_LEVEL ? xpForLevel(level) : 0;
+  }
+
+  if (level >= MAX_LEVEL) {
+    level = MAX_LEVEL;
+    levelXp = 0;
+    threshold = 0;
   }
 
   return { level, levelXp, xpToNextLevel: threshold };
