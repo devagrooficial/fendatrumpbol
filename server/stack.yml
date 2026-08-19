@@ -17,6 +17,13 @@ services:
     image: futtrool-server:latest
     environment:
       - PORT=8787
+      # Mesmo projeto/anon key que o cliente já usa (VITE_SUPABASE_URL/
+      # VITE_SUPABASE_ANON_KEY, ver .env.local) — só a anon key, nunca a
+      # service_role (de propósito, ver server/src/adminConfig.ts e
+      # supabase/migrations/004_admin.sql). Usado pra verificar quem está
+      # entrando numa partida (banimento) e pro painel "Ao vivo" do admin.
+      - SUPABASE_URL=https://zttcjfqavbqabgfnceyh.supabase.co
+      - SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp0dGNqZnFhdmJxYWJnZm5jZXloIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4MDQ5OTYsImV4cCI6MjEwMjM4MDk5Nn0.5DWEKpZG75C9TmJe4yTyUFqGEjgHl_YwYrmGeWGMWnQ
     networks:
       - hdservlognet
     deploy:

@@ -70,6 +70,7 @@
   "matchmaking.online.roomNotFound": "Sala não encontrada — o link pode ter expirado",
   "matchmaking.online.opponentLeft": "O adversário saiu da partida",
   "matchmaking.online.connectionFailed": "Não deu pra conectar no servidor — tenta de novo",
+  "matchmaking.online.banned": "Essa conta foi banida do multiplayer",
   "matchmaking.cancel": "Cancelar",
 
   "hud.kickoffIn": "Kickoff em {seconds}s",

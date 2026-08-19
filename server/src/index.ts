@@ -12,13 +12,60 @@
 // adversário mais próximo, sem noção de "companheiro").
 
 import { WebSocket, WebSocketServer } from 'ws';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { step } from '../../src/futtrool/core/simulation';
 import { createMatchState } from '../../src/futtrool/core/rules';
 import { createAiState, decideCommand, type AiState } from '../../src/futtrool/core/ai/brain';
 import { AI_PROFILES } from '../../src/futtrool/core/ai/profiles';
 import { AVATAR_COLOR_PALETTE, DEFAULT_AVATAR_COLOR, FIXED_TIMESTEP_S, MATCH, MATCH_SETTINGS_OPTIONS } from '../../src/futtrool/core/constants';
 import type { AvatarColor, AvatarColorMode, Command, GameState, MatchSettings, PlayerId, TeamId } from '../../src/futtrool/core/types';
-import type { ClientMessage, ServerMessage } from '../../src/futtrool/net/protocol';
+import type { AdminPlayerSnapshot, AdminRoomSnapshot, ClientMessage, ServerMessage } from '../../src/futtrool/net/protocol';
+import { ADMIN_EMAIL } from './adminConfig';
+
+// Cliente Supabase do PRÓPRIO servidor (não confundir com o do navegador,
+// em src/auth/supabaseClient.ts) — só a anon key, igual ao cliente; usado
+// pra (a) verificar o authToken que o jogador manda ao entrar numa
+// partida (supabase.auth.getUser() só CONFIRMA que o token é válido e
+// devolve o email associado, não precisa de privilégio nenhum além da
+// anon key pra isso) e (b) ler a lista pública de banidos
+// (public.admin_bans, RLS de leitura liberada pra todo mundo de
+// propósito, ver a migration). Sem service_role key aqui — de propósito,
+// pra não introduzir um segredo capaz de ignorar RLS só pra isso.
+const supabase: SupabaseClient | null =
+  process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY
+    ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY)
+    : null;
+
+// Verifica um access_token de sessão Supabase e devolve o email de quem é
+// dono dele — `null` se não tiver token, o token for inválido/expirado, ou
+// o Supabase não estiver configurado nesse ambiente (dev local sem
+// SUPABASE_URL/SUPABASE_ANON_KEY: multiplayer continua funcionando, só sem
+// identificar ninguém, igual sempre foi antes dessa mudança).
+async function verifyEmail(token: string | undefined): Promise<string | null> {
+  if (!token || !supabase) return null;
+  try {
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data.user?.email) return null;
+    return data.user.email;
+  } catch {
+    return null;
+  }
+}
+
+// Cache local da lista de banidos (public.admin_bans) — consultar o banco
+// a cada quickMatch/createRoom/joinRoom seria um round-trip a mais por
+// jogador só pra isso; em vez disso, atualiza a cada 30s. Uma pessoa recém
+// banida pode demorar até 30s pra ser recusada — aceitável (não é
+// anti-cheat em tempo real, é moderação).
+let bannedEmails = new Set<string>();
+async function refreshBannedEmails(): Promise<void> {
+  if (!supabase) return;
+  const { data, error } = await supabase.from('admin_bans').select('email');
+  if (error || !data) return;
+  bannedEmails = new Set((data as { email: string }[]).map((row) => row.email.toLowerCase()));
+}
+void refreshBannedEmails();
+setInterval(() => void refreshBannedEmails(), 30_000);
 
 const PORT = Number(process.env.PORT ?? 8787);
 const MAX_TEAM_SIZE = 3; // 1v1, 2v2 e 3v3 — pra ir além é só subir esse número de novo
@@ -120,6 +167,9 @@ class Room {
   private readonly commands: Record<PlayerId, Command>;
   private readonly timer: ReturnType<typeof setInterval>;
   private readonly humanSockets: Partial<Record<PlayerId, WebSocket>>;
+  private readonly names: Record<PlayerId, string>;
+  private readonly emails: Record<PlayerId, string | null>;
+  private readonly teamSize: number;
   private readonly botStates = new Map<PlayerId, AiState>();
   private readonly onEnded: () => void;
 
@@ -128,10 +178,14 @@ class Room {
     humanSockets: Partial<Record<PlayerId, WebSocket>>,
     names: Record<PlayerId, string>,
     colors: Record<PlayerId, AvatarColor>,
+    emails: Record<PlayerId, string | null>,
     matchSettings: MatchSettings,
     onEnded: () => void,
   ) {
     this.humanSockets = humanSockets;
+    this.names = names;
+    this.emails = emails;
+    this.teamSize = roster.teamA.length;
     this.onEnded = onEnded;
     this.state = createMatchState(Date.now(), MATCH.KICKOFF_COUNTDOWN_MS, roster, matchSettings);
 
@@ -194,6 +248,16 @@ class Room {
     return Object.values(this.humanSockets).filter((ws): ws is WebSocket => ws !== undefined);
   }
 
+  // Retrato pro painel "Ao vivo" do admin (ver protocol.ts
+  // AdminRoomSnapshot) — só humanos (bot não tem WebSocket, então nem
+  // entra em humanSockets pra começo de conversa).
+  getSnapshot(): AdminRoomSnapshot {
+    const players: AdminPlayerSnapshot[] = (Object.entries(this.humanSockets) as [PlayerId, WebSocket | undefined][])
+      .filter((entry): entry is [PlayerId, WebSocket] => entry[1] !== undefined)
+      .map(([id]) => ({ playerId: id, name: this.names[id] ?? id, email: this.emails[id] ?? null }));
+    return { status: 'playing', teamSize: this.teamSize, code: null, players };
+  }
+
   stop(): void {
     clearInterval(this.timer);
     for (const ws of this.allHumanSockets()) {
@@ -213,7 +277,7 @@ class Room {
 // bot).
 // ---------------------------------------------------------------------------
 
-type LobbyEntry = { ws: WebSocket; name: string; avatarColor: AvatarColor };
+type LobbyEntry = { ws: WebSocket; name: string; avatarColor: AvatarColor; email: string | null };
 
 type Lobby = {
   teamSize: number;
@@ -254,19 +318,21 @@ function startLobby(lobby: Lobby): void {
   const humanSockets: Partial<Record<PlayerId, WebSocket>> = {};
   const names = {} as Record<PlayerId, string>;
   const colors = {} as Record<PlayerId, AvatarColor>;
-  lobby.entries.forEach(({ ws, name, avatarColor }, i) => {
+  const emails = {} as Record<PlayerId, string | null>;
+  lobby.entries.forEach(({ ws, name, avatarColor, email }, i) => {
     const id = slotToPlayerId(lobby.teamSize, i);
     humanSockets[id] = ws;
     names[id] = name;
     colors[id] = avatarColor;
+    emails[id] = email;
   });
 
-  const room = new Room(roster, humanSockets, names, colors, lobby.matchSettings, () => rooms.delete(room));
+  const room = new Room(roster, humanSockets, names, colors, emails, lobby.matchSettings, () => rooms.delete(room));
   rooms.add(room);
 }
 
-function joinLobby(lobby: Lobby, ws: WebSocket, name: string, avatarColor: AvatarColor): void {
-  lobby.entries.push({ ws, name, avatarColor });
+function joinLobby(lobby: Lobby, ws: WebSocket, name: string, avatarColor: AvatarColor, email: string | null): void {
+  lobby.entries.push({ ws, name, avatarColor, email });
   socketLobby.set(ws, lobby);
   if (lobby.entries.length >= lobbyCapacity(lobby)) {
     startLobby(lobby);
@@ -298,13 +364,49 @@ function removeFromPendingLobby(ws: WebSocket): void {
   else broadcastLobbyUpdate(lobby);
 }
 
+// ---------------------------------------------------------------------------
+// Painel "Ao vivo" do admin (admin.html): uma conexão WS separada (não é
+// partida nenhuma) que passa por 'adminAuth' — só quem verifica pro email
+// de ADMIN_EMAIL (ver adminConfig.ts) vira observador e recebe um retrato
+// de todas as salas/filas ativas a cada BROADCAST_INTERVAL_MS. Ninguém mais
+// tem esse email pra usar, então nem vale a pena o cliente tentar adivinhar
+// — o servidor sempre reverifica o token de novo aqui, nunca confia num
+// "eu sou admin" que o cliente afirme.
+// ---------------------------------------------------------------------------
+
+const adminObservers = new Set<WebSocket>();
+const ADMIN_BROADCAST_INTERVAL_MS = 2000;
+
+function lobbySnapshot(lobby: Lobby): AdminRoomSnapshot {
+  const players: AdminPlayerSnapshot[] = lobby.entries.map((entry, i) => ({
+    playerId: slotToPlayerId(lobby.teamSize, i),
+    name: entry.name,
+    email: entry.email,
+  }));
+  return { status: 'waiting', teamSize: lobby.teamSize, code: lobby.code, players };
+}
+
+function collectAdminSnapshots(): AdminRoomSnapshot[] {
+  const snapshots: AdminRoomSnapshot[] = [];
+  for (const lobby of publicLobbies.values()) snapshots.push(lobbySnapshot(lobby));
+  for (const lobby of privateLobbies.values()) snapshots.push(lobbySnapshot(lobby));
+  for (const room of rooms) snapshots.push(room.getSnapshot());
+  return snapshots;
+}
+
+setInterval(() => {
+  if (adminObservers.size === 0) return;
+  const message: ServerMessage = { type: 'adminRooms', rooms: collectAdminSnapshots() };
+  for (const ws of adminObservers) send(ws, message);
+}, ADMIN_BROADCAST_INTERVAL_MS);
+
 const wss = new WebSocketServer({ port: PORT });
 
 wss.on('connection', (ws) => {
   // Primeira mensagem decide o modo de pareamento (ver protocol.ts); depois
   // que a Room assume a conexão, ela troca esse listener por um só de
   // 'command' (ws.removeAllListeners('message') no construtor da Room).
-  ws.on('message', (raw) => {
+  ws.on('message', async (raw) => {
     let parsed: ClientMessage;
     try {
       parsed = JSON.parse(raw.toString());
@@ -312,34 +414,64 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    if (parsed.type === 'adminAuth') {
+      const email = await verifyEmail(parsed.token);
+      if (email !== ADMIN_EMAIL) {
+        send(ws, { type: 'adminDenied' });
+        ws.close();
+        return;
+      }
+      adminObservers.add(ws);
+      send(ws, { type: 'adminRooms', rooms: collectAdminSnapshots() });
+      return;
+    }
+
     if (parsed.type === 'quickMatch') {
+      const email = await verifyEmail(parsed.authToken);
+      if (email && bannedEmails.has(email.toLowerCase())) {
+        send(ws, { type: 'banned' });
+        ws.close();
+        return;
+      }
       const teamSize = clampTeamSize(parsed.teamSize);
       let lobby = publicLobbies.get(teamSize);
       if (!lobby) {
         lobby = { teamSize, code: null, entries: [], matchSettings: sanitizeMatchSettings(parsed.matchSettings) };
         publicLobbies.set(teamSize, lobby);
       }
-      joinLobby(lobby, ws, sanitizeName(parsed.name), sanitizeAvatarColor(parsed.avatarColor));
+      joinLobby(lobby, ws, sanitizeName(parsed.name), sanitizeAvatarColor(parsed.avatarColor), email);
       return;
     }
 
     if (parsed.type === 'createRoom') {
+      const email = await verifyEmail(parsed.authToken);
+      if (email && bannedEmails.has(email.toLowerCase())) {
+        send(ws, { type: 'banned' });
+        ws.close();
+        return;
+      }
       const teamSize = clampTeamSize(parsed.teamSize);
       const code = generateRoomCode();
       const lobby: Lobby = { teamSize, code, entries: [], matchSettings: sanitizeMatchSettings(parsed.matchSettings) };
       privateLobbies.set(code, lobby);
       send(ws, { type: 'roomCreated', code });
-      joinLobby(lobby, ws, sanitizeName(parsed.name), sanitizeAvatarColor(parsed.avatarColor));
+      joinLobby(lobby, ws, sanitizeName(parsed.name), sanitizeAvatarColor(parsed.avatarColor), email);
       return;
     }
 
     if (parsed.type === 'joinRoom') {
+      const email = await verifyEmail(parsed.authToken);
+      if (email && bannedEmails.has(email.toLowerCase())) {
+        send(ws, { type: 'banned' });
+        ws.close();
+        return;
+      }
       const lobby = privateLobbies.get(parsed.code);
       if (!lobby) {
         send(ws, { type: 'roomNotFound' });
         return;
       }
-      joinLobby(lobby, ws, sanitizeName(parsed.name), sanitizeAvatarColor(parsed.avatarColor));
+      joinLobby(lobby, ws, sanitizeName(parsed.name), sanitizeAvatarColor(parsed.avatarColor), email);
       return;
     }
 
@@ -352,6 +484,7 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     removeFromPendingLobby(ws);
+    adminObservers.delete(ws);
   });
 });
 

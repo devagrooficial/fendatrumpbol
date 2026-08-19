@@ -46,15 +46,17 @@ import { ReplayPlayer } from './replay/player';
 import { ReplayStore, type SavedReplay } from './replay/storage';
 import { MatchStatsStore } from './stats/storage';
 import { adManager } from './ads/adManager';
-import type { AdsConfig } from './ads/types';
+import { loadAdsConfig } from './ads/loadAdsConfig';
 
-// Sistema de publicidade (spec seção 10) — carregado uma vez no boot.
-// Trocar campanha é só editar o JSON e recarregar (seção 10.5), sem
-// rebuild. O fetch dispara aqui em cima (cedo), mas o `.then()` que usa as
-// telas só é registrado mais embaixo, depois delas existirem (a promise só
-// resolve depois do script síncrono terminar de qualquer forma, então a
-// ordem de declaração não importa pra corretude — só pra legibilidade).
-const adsConfigPromise = fetch('/futtrool/ads.config.json').then((res) => res.json() as Promise<AdsConfig>);
+// Sistema de publicidade (spec seção 10) — carregado uma vez no boot, do
+// Supabase (public.ad_creatives, editável ao vivo pelo painel de admin,
+// sem rebuild — ver ads/loadAdsConfig.ts), com fallback pro JSON estático
+// se o Supabase estiver fora do ar. O fetch dispara aqui em cima (cedo),
+// mas o `.then()` que usa as telas só é registrado mais embaixo, depois
+// delas existirem (a promise só resolve depois do script síncrono
+// terminar de qualquer forma, então a ordem de declaração não importa pra
+// corretude — só pra legibilidade).
+const adsConfigPromise = loadAdsConfig();
 
 const canvasEl = document.querySelector<HTMLCanvasElement>('#app');
 if (!canvasEl) throw new Error('Canvas #app não encontrado');
@@ -333,10 +335,16 @@ function onMatchmakingStartNow(): void {
   onlineClient?.requestStartNow();
 }
 
-function connectOnline(mode: OnlineJoinMode): void {
+async function connectOnline(mode: OnlineJoinMode): Promise<void> {
   appScreen = 'onlineMatchmaking';
   hideAllScreens();
   matchmakingScreen.showOnline();
+
+  // Sessão atual (se estiver logado) — o servidor usa isso pra confirmar
+  // de verdade quem está entrando (banimento + painel de admin, ver
+  // server/src/index.ts). Quem não está logado segue como convidado
+  // (authToken undefined), exatamente como sempre funcionou.
+  const authToken = supabase ? (await supabase.auth.getSession()).data.session?.access_token : undefined;
 
   const client = new OnlineClient();
   onlineClient = client;
@@ -345,9 +353,9 @@ function connectOnline(mode: OnlineJoinMode): void {
 
   client.connect({
     onOpen: () => {
-      if (mode.kind === 'quickMatch') client.requestQuickMatch(mode.teamSize, displayName, matchSettings, avatarColor);
-      else if (mode.kind === 'createRoom') client.requestCreateRoom(mode.teamSize, displayName, matchSettings, avatarColor);
-      else client.requestJoinRoom(mode.code, displayName, avatarColor);
+      if (mode.kind === 'quickMatch') client.requestQuickMatch(mode.teamSize, displayName, matchSettings, avatarColor, authToken);
+      else if (mode.kind === 'createRoom') client.requestCreateRoom(mode.teamSize, displayName, matchSettings, avatarColor, authToken);
+      else client.requestJoinRoom(mode.code, displayName, avatarColor, authToken);
     },
     onAssigned: (playerId, names, colors) => {
       assignedPlayerId = playerId;
@@ -380,6 +388,11 @@ function connectOnline(mode: OnlineJoinMode): void {
       onlineClient = null;
       onlineMode = false;
       goToMenuWithNotice(t('matchmaking.online.opponentLeft'));
+    },
+    onBanned: () => {
+      onlineClient = null;
+      onlineMode = false;
+      goToMenuWithNotice(t('matchmaking.online.banned'));
     },
     onClose: () => {
       if (appScreen === 'onlineMatchmaking') {

@@ -26,6 +26,9 @@ export type OnlineClientCallbacks = {
   onLobbyUpdate: (teamSize: number, filled: Record<TeamId, number>, capacity: number) => void;
   onState: (state: GameState, events: MatchEvent[]) => void;
   onOpponentLeft: () => void;
+  // Email (via authToken) bate com public.admin_bans — servidor recusou a
+  // entrada e já fechou a conexão em seguida (ver server/src/index.ts).
+  onBanned: () => void;
   onClose: () => void;
 };
 
@@ -51,6 +54,7 @@ export class OnlineClient {
       else if (message.type === 'lobbyUpdate') callbacks.onLobbyUpdate(message.teamSize, message.filled, message.capacity);
       else if (message.type === 'state') callbacks.onState(message.state, message.events);
       else if (message.type === 'opponentLeft') callbacks.onOpponentLeft();
+      else if (message.type === 'banned') callbacks.onBanned();
     });
 
     ws.addEventListener('close', () => callbacks.onClose());
@@ -61,16 +65,21 @@ export class OnlineClient {
     this.ws.send(JSON.stringify(message));
   }
 
-  requestQuickMatch(teamSize: number, name: string, matchSettings: MatchSettings, avatarColor: AvatarColor): void {
-    this.sendRaw({ type: 'quickMatch', teamSize, name, matchSettings, avatarColor });
+  // `authToken` (access_token da sessão Supabase, se estiver logado) deixa
+  // o servidor confirmar de verdade quem está entrando — usado só pra
+  // banimento e pro painel de admin ver o email de quem está jogando (ver
+  // protocol.ts). Quem não está logado manda undefined e continua jogando
+  // normalmente como convidado.
+  requestQuickMatch(teamSize: number, name: string, matchSettings: MatchSettings, avatarColor: AvatarColor, authToken?: string): void {
+    this.sendRaw({ type: 'quickMatch', teamSize, name, matchSettings, avatarColor, authToken });
   }
 
-  requestCreateRoom(teamSize: number, name: string, matchSettings: MatchSettings, avatarColor: AvatarColor): void {
-    this.sendRaw({ type: 'createRoom', teamSize, name, matchSettings, avatarColor });
+  requestCreateRoom(teamSize: number, name: string, matchSettings: MatchSettings, avatarColor: AvatarColor, authToken?: string): void {
+    this.sendRaw({ type: 'createRoom', teamSize, name, matchSettings, avatarColor, authToken });
   }
 
-  requestJoinRoom(code: string, name: string, avatarColor: AvatarColor): void {
-    this.sendRaw({ type: 'joinRoom', code, name, avatarColor });
+  requestJoinRoom(code: string, name: string, avatarColor: AvatarColor, authToken?: string): void {
+    this.sendRaw({ type: 'joinRoom', code, name, avatarColor, authToken });
   }
 
   requestStartNow(): void {

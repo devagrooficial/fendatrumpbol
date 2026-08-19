@@ -1,0 +1,230 @@
+/* Painel de administração — tema escuro simples, consistente com o resto
+   do hub (mesma paleta base de src/auth/styles.css e do FutTrool), sem
+   nenhuma dependência de framework de UI. */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #0b0b0e;
+  color: #fdf6ff;
+  font: 500 14px/1.5 'Segoe UI', system-ui, sans-serif;
+}
+
+.admin__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid rgba(253, 246, 255, 0.12);
+}
+
+.admin__header h1 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.admin__header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.admin__email {
+  font-size: 0.8rem;
+  color: rgba(253, 246, 255, 0.6);
+}
+
+.admin__nav {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid rgba(253, 246, 255, 0.12);
+  overflow-x: auto;
+}
+
+.admin__tab {
+  padding: 0.5rem 1rem;
+  font: 700 0.85rem 'Segoe UI', system-ui, sans-serif;
+  color: #fdf6ff;
+  background: rgba(253, 246, 255, 0.06);
+  border: 1px solid rgba(253, 246, 255, 0.15);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.admin__tab--active {
+  background: #e93d82;
+  border-color: #e93d82;
+  color: #0b0b0e;
+}
+
+.admin__content {
+  padding: 1.5rem;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.admin__button {
+  padding: 0.5rem 1rem;
+  font: 700 0.85rem 'Segoe UI', system-ui, sans-serif;
+  color: #0b0b0e;
+  background: #e93d82;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.admin__button:hover {
+  background: #f25c98;
+}
+
+.admin__button--secondary {
+  color: #fdf6ff;
+  background: rgba(253, 246, 255, 0.08);
+  border: 1px solid rgba(253, 246, 255, 0.25);
+}
+
+.admin__button--danger {
+  color: #fdf6ff;
+  background: rgba(240, 87, 75, 0.25);
+  border: 1px solid rgba(240, 87, 75, 0.6);
+}
+
+.admin__button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.admin__input,
+.admin__select,
+.admin__textarea {
+  padding: 0.5rem 0.7rem;
+  font: 500 0.85rem 'Segoe UI', system-ui, sans-serif;
+  color: #fdf6ff;
+  background: rgba(253, 246, 255, 0.06);
+  border: 1px solid rgba(253, 246, 255, 0.2);
+  border-radius: 0.4rem;
+}
+
+.admin__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 0.75rem;
+}
+
+.admin__field label {
+  font-size: 0.75rem;
+  color: rgba(253, 246, 255, 0.6);
+}
+
+.admin__section-title {
+  font-size: 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.admin__card {
+  background: rgba(253, 246, 255, 0.04);
+  border: 1px solid rgba(253, 246, 255, 0.1);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.admin__cards-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.admin__stat-value {
+  font-size: 1.8rem;
+  font-weight: 800;
+}
+
+.admin__stat-label {
+  font-size: 0.75rem;
+  color: rgba(253, 246, 255, 0.6);
+}
+
+.admin__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.admin__table th,
+.admin__table td {
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid rgba(253, 246, 255, 0.08);
+}
+
+.admin__table th {
+  color: rgba(253, 246, 255, 0.6);
+  font-weight: 700;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.admin__table-wrap {
+  overflow-x: auto;
+  margin-bottom: 1.5rem;
+}
+
+.admin__tag {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.admin__tag--danger {
+  background: rgba(240, 87, 75, 0.25);
+  color: #f0574b;
+}
+
+.admin__tag--ok {
+  background: rgba(74, 222, 128, 0.2);
+  color: #4ade80;
+}
+
+.admin__tag--muted {
+  background: rgba(253, 246, 255, 0.1);
+  color: rgba(253, 246, 255, 0.6);
+}
+
+.admin__message {
+  font-size: 0.8rem;
+  margin: 0.5rem 0;
+}
+
+.admin__message--error {
+  color: #ff6b6b;
+}
+
+.admin__message--success {
+  color: #4ade80;
+}
+
+.admin__empty {
+  padding: 2rem;
+  text-align: center;
+  color: rgba(253, 246, 255, 0.5);
+  font-size: 0.85rem;
+}
+
+.admin__form-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}

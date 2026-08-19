@@ -15,6 +15,7 @@ export default defineConfig({
         signup: resolve(import.meta.dirname, 'signup.html'),
         forgotPassword: resolve(import.meta.dirname, 'forgot-password.html'),
         resetPassword: resolve(import.meta.dirname, 'reset-password.html'),
+        admin: resolve(import.meta.dirname, 'admin.html'),
       },
     },
   },

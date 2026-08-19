@@ -17,13 +17,28 @@ import type { AvatarColor, Command, GameState, MatchEvent, MatchSettings, Player
 // usada pro tamanho do time; quem entra via joinRoom herda o que a sala já
 // tem, não manda o próprio. `avatarColor`, diferente de `matchSettings`, é
 // por PESSOA (não por sala) — por isso vai em quickMatch/createRoom E
-// joinRoom, sempre a cor de quem está mandando a mensagem.
+// joinRoom, sempre a cor de quem está mandando a mensagem. `authToken`
+// (opcional — quem não está logado manda undefined e continua jogando
+// normalmente como convidado) é o access_token da sessão Supabase de quem
+// está mandando; o servidor verifica ele com supabase.auth.getUser() antes
+// de aceitar a entrada — usado pra (a) recusar gente banida
+// (public.admin_bans) e (b) saber o email de verdade de quem está jogando,
+// pro painel de admin (ver 'adminAuth'/'adminRooms' abaixo). Nunca é
+// confiado sem verificar: um cliente forjando esse campo só engana quem
+// não checou a assinatura do token, e o servidor sempre checa.
 export type ClientMessage =
-  | { type: 'quickMatch'; teamSize: number; name: string; matchSettings: MatchSettings; avatarColor: AvatarColor }
-  | { type: 'createRoom'; teamSize: number; name: string; matchSettings: MatchSettings; avatarColor: AvatarColor }
-  | { type: 'joinRoom'; code: string; name: string; avatarColor: AvatarColor }
+  | { type: 'quickMatch'; teamSize: number; name: string; matchSettings: MatchSettings; avatarColor: AvatarColor; authToken?: string }
+  | { type: 'createRoom'; teamSize: number; name: string; matchSettings: MatchSettings; avatarColor: AvatarColor; authToken?: string }
+  | { type: 'joinRoom'; code: string; name: string; avatarColor: AvatarColor; authToken?: string }
   | { type: 'startNow' }
-  | { type: 'command'; command: Command };
+  | { type: 'command'; command: Command }
+  // Canal separado do admin.html (não é uma partida) — o servidor verifica
+  // se `token` pertence ao email de admin (ver server/src/adminConfig.ts) e,
+  // se sim, passa a mandar 'adminRooms' periodicamente pra essa conexão até
+  // ela fechar. Qualquer outro email (ou token inválido) recebe
+  // 'adminDenied' e a conexão é encerrada — verificação sempre no servidor,
+  // nunca confiada do que o cliente afirma ser.
+  | { type: 'adminAuth'; token: string };
 
 export type ServerMessage =
   // `names`/`colors` cobrem TODOS os slots com humano de verdade nessa
@@ -40,4 +55,20 @@ export type ServerMessage =
   | { type: 'state'; state: GameState; events: MatchEvent[] }
   // Adversário caiu ou fechou a conexão — partida não continua (reconexão
   // automática é fora do escopo desta entrega, ver plano de multiplayer).
-  | { type: 'opponentLeft' };
+  | { type: 'opponentLeft' }
+  // Email (via authToken) bate com public.admin_bans — servidor recusa a
+  // entrada e fecha a conexão logo em seguida.
+  | { type: 'banned' }
+  | { type: 'adminDenied' }
+  | { type: 'adminRooms'; rooms: AdminRoomSnapshot[] };
+
+// Retrato de UMA sala/fila ativa (esperando gente OU já jogando), pro
+// painel "Ao vivo" do admin — nunca mandado pra ninguém além de uma
+// conexão que passou por 'adminAuth'.
+export type AdminPlayerSnapshot = { playerId: PlayerId; name: string; email: string | null };
+export type AdminRoomSnapshot = {
+  status: 'waiting' | 'playing';
+  teamSize: number;
+  code: string | null; // sala privada tem código; fila pública/partida em andamento não
+  players: AdminPlayerSnapshot[];
+};
