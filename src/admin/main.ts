@@ -6,6 +6,7 @@ import { mountStatsScreen } from './screens/stats';
 import { mountAdsScreen } from './screens/ads';
 import { mountStoreScreen } from './screens/store';
 import { mountLiveScreen } from './screens/live';
+import { mountSpectateScreen } from './screens/spectate';
 
 type TabId = 'people' | 'stats' | 'ads' | 'store' | 'live';
 
@@ -34,6 +35,17 @@ async function boot(): Promise<void> {
 
   const root = document.querySelector<HTMLDivElement>('#admin');
   if (!root) throw new Error('#admin não encontrado');
+
+  // Aba nova aberta a partir de um card em "Ao vivo" (ver
+  // screens/live.ts) — tela cheia, sem a navegação normal do painel, só o
+  // espectador. `roomId` some da URL de qualquer forma se essa aba for
+  // recarregada, então não precisa limpar (?spectate=X só faz sentido na
+  // primeira carga mesmo).
+  const spectateRoomId = new URLSearchParams(window.location.search).get('spectate');
+  if (spectateRoomId) {
+    mountSpectateScreen(root, spectateRoomId);
+    return;
+  }
 
   root.innerHTML = `
     <header class="admin__header">

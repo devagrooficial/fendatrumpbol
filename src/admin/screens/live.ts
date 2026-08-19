@@ -26,12 +26,16 @@ function renderRoom(room: AdminRoomSnapshot): string {
       ? `<ul style="margin:0.25rem 0 0;padding-left:1.1rem;">${players.map((p) => `<li>${playerLine(p)}</li>`).join('')}</ul>`
       : '<p style="margin:0.25rem 0 0;opacity:0.5;font-size:0.8rem;">vazio (bot)</p>';
 
+  // Só partida EM ANDAMENTO tem `roomId` (ver protocol.ts AdminRoomSnapshot)
+  // — sala ainda esperando gente não tem GameState nenhum pra espectar.
+  const clickable = room.roomId !== null;
   return `
-    <div class="admin__card">
+    <div class="admin__card"${clickable ? ` data-room-id="${room.roomId}" style="cursor:pointer;"` : ''}>
       <div class="admin__form-row" style="align-items:center;">
         ${statusTag}
         <span>${room.teamSize}v${room.teamSize}</span>
         ${room.code ? `<span style="font-size:0.75rem;color:rgba(253,246,255,0.5);">sala ${room.code}</span>` : ''}
+        ${clickable ? '<span style="flex:1;"></span><span style="font-size:0.75rem;color:#e93d82;">▶ clique pra assistir</span>' : ''}
       </div>
       <div class="admin__form-row" style="margin-top:0.5rem;align-items:flex-start;">
         <div style="flex:1;min-width:180px;"><strong>Time A</strong>${teamList(teamA)}</div>
@@ -56,6 +60,16 @@ export function mountLiveScreen(el: HTMLElement): () => void {
   function renderRooms(rooms: AdminRoomSnapshot[]): void {
     roomsEl.innerHTML = rooms.length > 0 ? rooms.map(renderRoom).join('') : '<p class="admin__empty">Nenhuma sala ativa agora.</p>';
   }
+
+  // Delegação de evento (os cards são recriados a cada `adminRooms`, então
+  // um listener por card seria refeito toda hora à toa) — abre uma aba
+  // nova de verdade, que faz o próprio requireAdmin()+adminAuth do zero
+  // (ver src/admin/main.ts), não uma view dentro da mesma conexão.
+  roomsEl.addEventListener('click', (ev) => {
+    const card = (ev.target as HTMLElement).closest<HTMLElement>('[data-room-id]');
+    if (!card?.dataset.roomId) return;
+    window.open(`/admin.html?spectate=${encodeURIComponent(card.dataset.roomId)}`, '_blank');
+  });
 
   async function connect(): Promise<void> {
     if (!supabase) {

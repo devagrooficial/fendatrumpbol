@@ -11,6 +11,7 @@
 // anti-trapaça da física, e IA com coordenação de time (cada bot mira só o
 // adversário mais próximo, sem noção de "companheiro").
 
+import { randomUUID } from 'node:crypto';
 import { WebSocket, WebSocketServer } from 'ws';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { step } from '../../src/futtrool/core/simulation';
@@ -163,6 +164,7 @@ function buildRoster(teamSize: number): Record<TeamId, PlayerId[]> {
 // ---------------------------------------------------------------------------
 
 class Room {
+  readonly id: string;
   private state: GameState;
   private readonly commands: Record<PlayerId, Command>;
   private readonly timer: ReturnType<typeof setInterval>;
@@ -171,9 +173,15 @@ class Room {
   private readonly emails: Record<PlayerId, string | null>;
   private readonly teamSize: number;
   private readonly botStates = new Map<PlayerId, AiState>();
+  // Conexões do admin assistindo essa partida em modo espectador (ver
+  // 'spectate' no protocolo) — recebem os mesmos 'state' que os jogadores
+  // de verdade, nunca mandam 'command' nenhum (o servidor simplesmente não
+  // ouve 'message' delas pra esse fim, ver wss.on('connection') abaixo).
+  private readonly spectators = new Set<WebSocket>();
   private readonly onEnded: () => void;
 
   constructor(
+    id: string,
     roster: Record<TeamId, PlayerId[]>,
     humanSockets: Partial<Record<PlayerId, WebSocket>>,
     names: Record<PlayerId, string>,
@@ -182,6 +190,7 @@ class Room {
     matchSettings: MatchSettings,
     onEnded: () => void,
   ) {
+    this.id = id;
     this.humanSockets = humanSockets;
     this.names = names;
     this.emails = emails;
@@ -240,6 +249,7 @@ class Room {
 
     const message: ServerMessage = { type: 'state', state: this.state, events: result.events };
     for (const ws of this.allHumanSockets()) send(ws, message);
+    for (const ws of this.spectators) send(ws, message);
 
     if (this.state.phase === 'ended') this.stop();
   }
@@ -255,7 +265,17 @@ class Room {
     const players: AdminPlayerSnapshot[] = (Object.entries(this.humanSockets) as [PlayerId, WebSocket | undefined][])
       .filter((entry): entry is [PlayerId, WebSocket] => entry[1] !== undefined)
       .map(([id]) => ({ playerId: id, name: this.names[id] ?? id, email: this.emails[id] ?? null }));
-    return { status: 'playing', teamSize: this.teamSize, code: null, players };
+    return { status: 'playing', teamSize: this.teamSize, code: null, roomId: this.id, players };
+  }
+
+  addSpectator(ws: WebSocket): void {
+    this.spectators.add(ws);
+    send(ws, { type: 'spectateStarted', roomId: this.id, players: this.getSnapshot().players });
+    send(ws, { type: 'state', state: this.state, events: [] });
+  }
+
+  removeSpectator(ws: WebSocket): void {
+    this.spectators.delete(ws);
   }
 
   stop(): void {
@@ -263,6 +283,8 @@ class Room {
     for (const ws of this.allHumanSockets()) {
       if (ws.readyState === WebSocket.OPEN) ws.close();
     }
+    for (const ws of this.spectators) send(ws, { type: 'spectateEnded' });
+    this.spectators.clear();
     this.onEnded();
   }
 }
@@ -289,7 +311,7 @@ type Lobby = {
 const publicLobbies = new Map<number, Lobby>(); // teamSize -> lobby aberto agora
 const privateLobbies = new Map<string, Lobby>();
 const socketLobby = new Map<WebSocket, Lobby>();
-const rooms = new Set<Room>();
+const rooms = new Map<string, Room>(); // roomId -> Room (ver 'spectate' no protocolo)
 
 function lobbyCapacity(lobby: Lobby): number {
   return lobby.teamSize * 2;
@@ -327,8 +349,9 @@ function startLobby(lobby: Lobby): void {
     emails[id] = email;
   });
 
-  const room = new Room(roster, humanSockets, names, colors, emails, lobby.matchSettings, () => rooms.delete(room));
-  rooms.add(room);
+  const roomId = randomUUID();
+  const room = new Room(roomId, roster, humanSockets, names, colors, emails, lobby.matchSettings, () => rooms.delete(roomId));
+  rooms.set(roomId, room);
 }
 
 function joinLobby(lobby: Lobby, ws: WebSocket, name: string, avatarColor: AvatarColor, email: string | null): void {
@@ -383,15 +406,24 @@ function lobbySnapshot(lobby: Lobby): AdminRoomSnapshot {
     name: entry.name,
     email: entry.email,
   }));
-  return { status: 'waiting', teamSize: lobby.teamSize, code: lobby.code, players };
+  return { status: 'waiting', teamSize: lobby.teamSize, code: lobby.code, roomId: null, players };
 }
 
 function collectAdminSnapshots(): AdminRoomSnapshot[] {
   const snapshots: AdminRoomSnapshot[] = [];
   for (const lobby of publicLobbies.values()) snapshots.push(lobbySnapshot(lobby));
   for (const lobby of privateLobbies.values()) snapshots.push(lobbySnapshot(lobby));
-  for (const room of rooms) snapshots.push(room.getSnapshot());
+  for (const room of rooms.values()) snapshots.push(room.getSnapshot());
   return snapshots;
+}
+
+// Espectador (admin) -> Room que ele está assistindo agora, se alguma —
+// usado só pra limpar direito quando ele troca de sala ou desconecta.
+const spectating = new Map<WebSocket, Room>();
+
+function stopSpectating(ws: WebSocket): void {
+  spectating.get(ws)?.removeSpectator(ws);
+  spectating.delete(ws);
 }
 
 setInterval(() => {
@@ -480,11 +512,33 @@ wss.on('connection', (ws) => {
       if (lobby) startLobby(lobby);
       return;
     }
+
+    if (parsed.type === 'spectate') {
+      // Só quem já provou ser o admin (via 'adminAuth' na MESMA conexão)
+      // pode pedir isso — nunca aceito de qualquer WebSocket que decida
+      // mandar essa mensagem por conta própria.
+      if (!adminObservers.has(ws)) return;
+      stopSpectating(ws);
+      const room = rooms.get(parsed.roomId);
+      if (!room) {
+        send(ws, { type: 'spectateEnded' });
+        return;
+      }
+      room.addSpectator(ws);
+      spectating.set(ws, room);
+      return;
+    }
+
+    if (parsed.type === 'unspectate') {
+      stopSpectating(ws);
+      return;
+    }
   });
 
   ws.on('close', () => {
     removeFromPendingLobby(ws);
     adminObservers.delete(ws);
+    stopSpectating(ws);
   });
 });
 
@@ -519,7 +573,7 @@ console.log(`[futtrool-server] ouvindo em ws://0.0.0.0:${PORT}`);
 
 function shutdown(): void {
   clearInterval(heartbeat);
-  for (const room of rooms) room.stop();
+  for (const room of rooms.values()) room.stop();
   wss.close(() => process.exit(0));
 }
 

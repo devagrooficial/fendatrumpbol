@@ -38,7 +38,15 @@ export type ClientMessage =
   // ela fechar. Qualquer outro email (ou token inválido) recebe
   // 'adminDenied' e a conexão é encerrada — verificação sempre no servidor,
   // nunca confiada do que o cliente afirma ser.
-  | { type: 'adminAuth'; token: string };
+  | { type: 'adminAuth'; token: string }
+  // Só aceito numa conexão que já passou por 'adminAuth' (ver
+  // server/src/index.ts) — pede pra receber 'state' (o mesmo GameState que
+  // os jogadores de verdade recebem, só que sem poder mandar 'command'
+  // nenhum, é modo espectador) de UMA partida em andamento específica.
+  // `unspectate` para de receber (não fecha a conexão do canal admin,
+  // ela continua recebendo 'adminRooms' normalmente).
+  | { type: 'spectate'; roomId: string }
+  | { type: 'unspectate' };
 
 export type ServerMessage =
   // `names`/`colors` cobrem TODOS os slots com humano de verdade nessa
@@ -60,7 +68,14 @@ export type ServerMessage =
   // entrada e fecha a conexão logo em seguida.
   | { type: 'banned' }
   | { type: 'adminDenied' }
-  | { type: 'adminRooms'; rooms: AdminRoomSnapshot[] };
+  | { type: 'adminRooms'; rooms: AdminRoomSnapshot[] }
+  // Resposta a 'spectate' bem-sucedido — manda o roster (nome/email por
+  // slot) uma vez só, antes da enxurrada de 'state' começar (senão o
+  // espectador não sabe de quem é cada bolinha em campo).
+  | { type: 'spectateStarted'; roomId: string; players: AdminPlayerSnapshot[] }
+  // A partida espectada acabou/sumiu (terminou de verdade, ou o roomId
+  // pedido nem existia mais) — o cliente volta pra lista de salas.
+  | { type: 'spectateEnded' };
 
 // Retrato de UMA sala/fila ativa (esperando gente OU já jogando), pro
 // painel "Ao vivo" do admin — nunca mandado pra ninguém além de uma
@@ -70,5 +85,8 @@ export type AdminRoomSnapshot = {
   status: 'waiting' | 'playing';
   teamSize: number;
   code: string | null; // sala privada tem código; fila pública/partida em andamento não
+  // Só partida EM ANDAMENTO tem isso (ver 'spectate') — sala esperando
+  // gente ainda não tem GameState nenhum pra assistir.
+  roomId: string | null;
   players: AdminPlayerSnapshot[];
 };
