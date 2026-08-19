@@ -3,7 +3,7 @@
 // eventos que o servidor manda de volta. Zero física/regras aqui: quem
 // decide o que acontece é sempre o servidor (ver server/src/index.ts).
 
-import type { Command, GameState, MatchEvent, MatchSettings, PlayerId, TeamId } from '../core/types';
+import type { AvatarColor, Command, GameState, MatchEvent, MatchSettings, PlayerId, TeamId } from '../core/types';
 import type { ClientMessage, ServerMessage } from './protocol';
 
 // wss:// em produção (o site já é HTTPS, então ws:// puro seria bloqueado
@@ -20,7 +20,7 @@ export type OnlineClientCallbacks = {
   // Só depois disso o socket aceita send() — é aqui que o chamador manda o
   // "modo" de pareamento (requestQuickMatch/requestCreateRoom/requestJoinRoom).
   onOpen: () => void;
-  onAssigned: (playerId: PlayerId, names: Record<PlayerId, string>) => void;
+  onAssigned: (playerId: PlayerId, names: Record<PlayerId, string>, colors: Record<PlayerId, AvatarColor>) => void;
   onRoomCreated: (code: string) => void;
   onRoomNotFound: () => void;
   onLobbyUpdate: (teamSize: number, filled: Record<TeamId, number>, capacity: number) => void;
@@ -45,7 +45,7 @@ export class OnlineClient {
       } catch {
         return;
       }
-      if (message.type === 'assigned') callbacks.onAssigned(message.playerId, message.names);
+      if (message.type === 'assigned') callbacks.onAssigned(message.playerId, message.names, message.colors);
       else if (message.type === 'roomCreated') callbacks.onRoomCreated(message.code);
       else if (message.type === 'roomNotFound') callbacks.onRoomNotFound();
       else if (message.type === 'lobbyUpdate') callbacks.onLobbyUpdate(message.teamSize, message.filled, message.capacity);
@@ -61,16 +61,16 @@ export class OnlineClient {
     this.ws.send(JSON.stringify(message));
   }
 
-  requestQuickMatch(teamSize: number, name: string, matchSettings: MatchSettings): void {
-    this.sendRaw({ type: 'quickMatch', teamSize, name, matchSettings });
+  requestQuickMatch(teamSize: number, name: string, matchSettings: MatchSettings, avatarColor: AvatarColor): void {
+    this.sendRaw({ type: 'quickMatch', teamSize, name, matchSettings, avatarColor });
   }
 
-  requestCreateRoom(teamSize: number, name: string, matchSettings: MatchSettings): void {
-    this.sendRaw({ type: 'createRoom', teamSize, name, matchSettings });
+  requestCreateRoom(teamSize: number, name: string, matchSettings: MatchSettings, avatarColor: AvatarColor): void {
+    this.sendRaw({ type: 'createRoom', teamSize, name, matchSettings, avatarColor });
   }
 
-  requestJoinRoom(code: string, name: string): void {
-    this.sendRaw({ type: 'joinRoom', code, name });
+  requestJoinRoom(code: string, name: string, avatarColor: AvatarColor): void {
+    this.sendRaw({ type: 'joinRoom', code, name, avatarColor });
   }
 
   requestStartNow(): void {

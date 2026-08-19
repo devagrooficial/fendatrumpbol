@@ -97,6 +97,23 @@ export const MATCH_SETTINGS_OPTIONS = {
   goalLimits: [3, 5, 7, 10],
 };
 
+// Cor do avatar (menu > "Cor do avatar", ver progression/avatarColor.ts) —
+// paleta curada em vez de color-picker livre, pra garantir que qualquer
+// combinação escolhida continue com contraste/legibilidade decente contra
+// o gramado (THEME.GRASS_A/B) e contra a cor do time (THEME.TEAM_1/2, ver
+// render/theme.ts — core não importa render/, então o padrão aqui é o
+// primeiro item da própria paleta, não uma referência cruzada).
+export const AVATAR_COLOR_PALETTE = [
+  '#E93D82', '#F0574B', '#F5A524', '#FACC15', '#4ADE80',
+  '#22D3AA', '#38BDF8', '#4B9BF0', '#818CF8', '#C084FC',
+  '#F472B6', '#F1F5F9',
+];
+
+export const DEFAULT_AVATAR_COLOR: { mode: 'solid'; colors: string[] } = {
+  mode: 'solid',
+  colors: [AVATAR_COLOR_PALETTE[0]!], // paleta acima nunca é vazia
+};
+
 // Anti-degenerescência (seção 3.6): bola "morta" num canto trava a partida.
 export const STALL = {
   SPEED_THRESHOLD: 8, // u/s

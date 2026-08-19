@@ -2,7 +2,7 @@
 // — nenhuma lógica de jogo aqui (decisão 5 da seção 13 da spec).
 
 import type { Camera } from './camera';
-import type { Ball, Player, Vec2 } from '../core/types';
+import type { AvatarColor, Ball, Player, Vec2 } from '../core/types';
 import { FIELD } from '../core/constants';
 import { THEME } from './theme';
 import type { TouchLayout } from '../input/joystick';
@@ -190,14 +190,51 @@ function renderFacingArrow(ctx: CanvasRenderingContext2D, p: { x: number; y: num
   ctx.fill();
 }
 
-export function renderPlayer(ctx: CanvasRenderingContext2D, camera: Camera, player: Player, color: string): void {
+// Preenchimento do corpo do jogador (spec da cor do avatar, menu > "Cor do
+// avatar"): 'solid' é um fillStyle só; 'duo' desenha duas metades (divisão
+// vertical no meio do círculo, sem girar com o facing — avatar pequeno
+// demais pra isso importar); 'gradient' interpola as duas cores da
+// esquerda pra direita.
+function fillPlayerBody(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, fill: AvatarColor): void {
+  if (fill.mode === 'duo' && fill.colors.length >= 2) {
+    ctx.fillStyle = fill.colors[0]!; // length checado acima
+    ctx.beginPath();
+    ctx.arc(x, y, r, Math.PI * 0.5, Math.PI * 1.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = fill.colors[1]!;
+    ctx.beginPath();
+    ctx.arc(x, y, r, -Math.PI * 0.5, Math.PI * 0.5);
+    ctx.closePath();
+    ctx.fill();
+    return;
+  }
+
+  if (fill.mode === 'gradient' && fill.colors.length >= 2) {
+    const gradient = ctx.createLinearGradient(x - r, y, x + r, y);
+    gradient.addColorStop(0, fill.colors[0]!);
+    gradient.addColorStop(1, fill.colors[1]!);
+    ctx.fillStyle = gradient;
+  } else {
+    ctx.fillStyle = fill.colors[0] ?? THEME.TEAM_1;
+  }
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+export function renderPlayer(ctx: CanvasRenderingContext2D, camera: Camera, player: Player, fill: AvatarColor): void {
   const p = camera.worldToScreen(player.pos.x, player.pos.y);
   const r = camera.worldLengthToScreen(player.radius);
 
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-  ctx.fillStyle = player.stunTimer > 0 ? 'rgba(255,255,255,0.35)' : color;
-  ctx.fill();
+  if (player.stunTimer > 0) {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fill();
+  } else {
+    fillPlayerBody(ctx, p.x, p.y, r, fill);
+  }
   ctx.lineWidth = camera.worldLengthToScreen(THEME.PLAYER_OUTLINE_WIDTH);
   ctx.strokeStyle = THEME.PLAYER_OUTLINE;
   ctx.stroke();

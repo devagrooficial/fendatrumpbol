@@ -59,6 +59,19 @@ export type MatchSettings = {
   goalsToWin: number;
 };
 
+// Cor do avatar escolhida pela pessoa (menu > "Cor do avatar", ver
+// progression/avatarColor.ts) — cosmético puro, não faz parte do
+// GameState/step() (mesma categoria de `nome`, que também não entra no
+// estado da simulação). Trafega à parte, via net/protocol.ts (mensagem
+// 'assigned', igual a `names`), pra quem joga contra/com alguém ver a cor
+// escolhida também, não só quem escolheu. 'solid' usa 1 cor, 'duo'
+// (metade a metade) e 'gradient' usam 2.
+export type AvatarColorMode = 'solid' | 'duo' | 'gradient';
+export type AvatarColor = {
+  mode: AvatarColorMode;
+  colors: string[];
+};
+
 export type GameState = {
   tick: number;
   phase: MatchPhase;

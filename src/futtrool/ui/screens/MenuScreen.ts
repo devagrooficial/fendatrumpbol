@@ -24,6 +24,7 @@ export class MenuScreen {
     onInviteFriend: (teamSize: number) => void,
     onReplays: () => void,
     onMatchSettings: () => void,
+    onAvatarColor: () => void,
     onNicknameSaved: (name: string) => void,
   ) {
     this.root = document.createElement('div');
@@ -60,6 +61,7 @@ export class MenuScreen {
             <button type="button" class="screen__button screen__button--secondary" data-replays>${t('menu.replays')}</button>
             <button type="button" class="screen__button screen__button--secondary" data-match-settings>${t('menu.matchSettings')}</button>
           </div>
+          <button type="button" class="screen__button screen__button--secondary" data-avatar-color>${t('menu.avatarColor')}</button>
           <p class="screen__placeholder-note" data-placeholder-note></p>
           <div class="screen__field">
             <label class="screen__field-label" for="futtrool-nickname">${t('menu.nickname.label')}</label>
@@ -100,6 +102,7 @@ export class MenuScreen {
     const shopButton = this.root.querySelector<HTMLButtonElement>('[data-shop]');
     const replaysButton = this.root.querySelector<HTMLButtonElement>('[data-replays]');
     const matchSettingsButton = this.root.querySelector<HTMLButtonElement>('[data-match-settings]');
+    const avatarColorButton = this.root.querySelector<HTMLButtonElement>('[data-avatar-color]');
     const placeholderNote = this.root.querySelector<HTMLParagraphElement>('[data-placeholder-note]');
     const soundToggle = this.root.querySelector<HTMLButtonElement>('[data-sound]');
     const fullscreenToggle = this.root.querySelector<HTMLButtonElement>('[data-fullscreen]');
@@ -116,6 +119,7 @@ export class MenuScreen {
       !shopButton ||
       !replaysButton ||
       !matchSettingsButton ||
+      !avatarColorButton ||
       !placeholderNote ||
       !soundToggle ||
       !fullscreenToggle ||
@@ -163,6 +167,11 @@ export class MenuScreen {
     matchSettingsButton.addEventListener('click', () => {
       Audio.click();
       onMatchSettings();
+    });
+
+    avatarColorButton.addEventListener('click', () => {
+      Audio.click();
+      onAvatarColor();
     });
 
     // Inventário/Loja: placeholder da entrega 1 (spec seção 7) — só avisa

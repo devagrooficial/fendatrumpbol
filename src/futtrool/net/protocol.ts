@@ -3,7 +3,7 @@
 // (mesma regra do GameState em core/types.ts), pra dar pra usar tanto no
 // navegador quanto no servidor Node sem depender de nada de DOM.
 
-import type { Command, GameState, MatchEvent, MatchSettings, PlayerId, TeamId } from '../core/types';
+import type { AvatarColor, Command, GameState, MatchEvent, MatchSettings, PlayerId, TeamId } from '../core/types';
 
 // Primeira mensagem que o cliente manda depois de conectar, decidindo como
 // quer ser pareado: fila aleatória (quickMatch), criar uma sala privada pra
@@ -15,20 +15,22 @@ import type { Command, GameState, MatchEvent, MatchSettings, PlayerId, TeamId } 
 // troca mensagens 'command'. `matchSettings` em quickMatch/createRoom é a
 // escolha de quem inicia a sala (duração/limite de gol) — mesma regra já
 // usada pro tamanho do time; quem entra via joinRoom herda o que a sala já
-// tem, não manda o próprio.
+// tem, não manda o próprio. `avatarColor`, diferente de `matchSettings`, é
+// por PESSOA (não por sala) — por isso vai em quickMatch/createRoom E
+// joinRoom, sempre a cor de quem está mandando a mensagem.
 export type ClientMessage =
-  | { type: 'quickMatch'; teamSize: number; name: string; matchSettings: MatchSettings }
-  | { type: 'createRoom'; teamSize: number; name: string; matchSettings: MatchSettings }
-  | { type: 'joinRoom'; code: string; name: string }
+  | { type: 'quickMatch'; teamSize: number; name: string; matchSettings: MatchSettings; avatarColor: AvatarColor }
+  | { type: 'createRoom'; teamSize: number; name: string; matchSettings: MatchSettings; avatarColor: AvatarColor }
+  | { type: 'joinRoom'; code: string; name: string; avatarColor: AvatarColor }
   | { type: 'startNow' }
   | { type: 'command'; command: Command };
 
 export type ServerMessage =
-  // `names` cobre TODOS os slots com humano de verdade nessa partida
-  // (inclusive quem está recebendo a mensagem) — quem não aparece aqui é
-  // bot (o cliente gera um apelido fictício localmente pra esses, ver
-  // ui/botNames.ts).
-  | { type: 'assigned'; playerId: PlayerId; names: Record<PlayerId, string> }
+  // `names`/`colors` cobrem TODOS os slots com humano de verdade nessa
+  // partida (inclusive quem está recebendo a mensagem) — quem não aparece
+  // aqui é bot (o cliente gera apelido fictício e mantém a cor do time pra
+  // esses, ver ui/botNames.ts e render/theme.ts).
+  | { type: 'assigned'; playerId: PlayerId; names: Record<PlayerId, string>; colors: Record<PlayerId, AvatarColor> }
   | { type: 'roomCreated'; code: string }
   | { type: 'roomNotFound' }
   // Progresso de uma sala (privada ou fila pública) ainda esperando gente —

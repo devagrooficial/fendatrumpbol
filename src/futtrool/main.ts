@@ -17,7 +17,7 @@ import { assignFictionalNames } from './ui/botNames';
 import { FIXED_TIMESTEP_S, MATCH, REPLAY } from './core/constants';
 import { step } from './core/simulation';
 import { createMatchState } from './core/rules';
-import type { Command, GameState, MatchEvent, MatchSettings, PlayerId, TeamId } from './core/types';
+import type { AvatarColor, Command, GameState, MatchEvent, MatchSettings, PlayerId, TeamId } from './core/types';
 import { teamOf } from './core/types';
 import { OnlineClient } from './net/onlineClient';
 import { KeyboardInput } from './input/keyboard';
@@ -36,6 +36,8 @@ import { ReplayOverlay } from './ui/ReplayOverlay';
 import { ProgressionStore, type ProgressionState } from './progression/storage';
 import { MatchSettingsStore } from './progression/matchSettings';
 import { MatchSettingsScreen } from './ui/screens/MatchSettingsScreen';
+import { AvatarColorStore } from './progression/avatarColor';
+import { AvatarColorScreen } from './ui/screens/AvatarColorScreen';
 import { applyXp, calculateMatchReward, splitExitReward, xpForLevel, type MatchOutcome } from './progression/economy';
 import { supabase } from '../auth/supabaseClient';
 import { getApelido } from '../auth/profile';
@@ -109,7 +111,7 @@ function getP1Command(tick: number): Command {
 // existe de verdade a partir de 'match').
 // ---------------------------------------------------------------------------
 
-type AppScreen = 'menu' | 'difficulty' | 'matchSettings' | 'matchmaking' | 'onlineMatchmaking' | 'match' | 'endgame' | 'replays' | 'watchingReplay';
+type AppScreen = 'menu' | 'difficulty' | 'matchSettings' | 'avatarColor' | 'matchmaking' | 'onlineMatchmaking' | 'match' | 'endgame' | 'replays' | 'watchingReplay';
 let appScreen: AppScreen = 'menu';
 let chosenDifficulty: AiDifficulty = 'profissional';
 
@@ -132,6 +134,10 @@ let onlineClient: OnlineClient | null = null;
 // Some sozinho quando volta pro modo offline (startMatch), senão um nome
 // de uma partida online anterior poderia vazar pro rótulo do bot da IA.
 let humanNames: Record<PlayerId, string> = {};
+// Mesma ideia de `humanNames`, pra cor do avatar (menu > "Cor do avatar"):
+// cor escolhida por cada humano de verdade na partida online atual, exceto
+// eu mesmo (uso `avatarColor` direto pro meu próprio, ver colorFor()).
+let humanColors: Record<PlayerId, AvatarColor> = {};
 // Apelido fictício de cada BOT da partida atual — calculado uma vez só
 // (não a cada frame) quando a partida começa, cobrindo todo mundo que não
 // está em `humanNames` (ver startMatch/startOnlineMatch e nameFor()).
@@ -146,6 +152,9 @@ let progression: ProgressionState = progressionStore.load();
 
 const matchSettingsStore = new MatchSettingsStore();
 let matchSettings = matchSettingsStore.load();
+
+const avatarColorStore = new AvatarColorStore();
+let avatarColor = avatarColorStore.load();
 
 // Apelido escolhido pelo jogador (até 12 caracteres, ver src/auth/profile.ts)
 // pra aparecer no lugar de "Você" no replay e na tela de fim de jogo. Cache
@@ -171,6 +180,17 @@ void refreshDisplayName();
 function nameFor(playerId: PlayerId): string {
   if (playerId === localPlayerId) return displayName;
   return humanNames[playerId] ?? botNameAssignment[playerId] ?? playerId;
+}
+
+// Cor de exibição de QUALQUER jogador em campo — mesma regra de nameFor():
+// eu mesmo uso a cor escolhida em `avatarColor`; outro humano de verdade
+// usa a cor que ele mandou ao entrar (humanColors, ver protocol.ts
+// 'assigned'); bot continua com a cor do time (nunca teve customização).
+function colorFor(player: { id: PlayerId; teamId: TeamId }): AvatarColor {
+  if (player.id === localPlayerId) return avatarColor;
+  const custom = humanColors[player.id];
+  if (custom) return custom;
+  return { mode: 'solid', colors: [player.teamId === 'teamA' ? THEME.TEAM_1 : THEME.TEAM_2] };
 }
 
 // Guardado no fim da partida (ver economy.ts: splitExitReward) — só é
@@ -199,6 +219,7 @@ function hideAllScreens(): void {
   savedReplaysScreen.hide();
   replayOverlay.hide();
   matchSettingsScreen.hide();
+  avatarColorScreen.hide();
 }
 
 function goToMenu(): void {
@@ -223,6 +244,18 @@ function onMatchSettingsChange(updated: MatchSettings): MatchSettings {
   matchSettings = updated;
   matchSettingsStore.save(matchSettings);
   return matchSettings;
+}
+
+function goToAvatarColor(): void {
+  appScreen = 'avatarColor';
+  hideAllScreens();
+  avatarColorScreen.show(avatarColor);
+}
+
+function onAvatarColorChange(updated: AvatarColor): AvatarColor {
+  avatarColor = updated;
+  avatarColorStore.save(avatarColor);
+  return avatarColor;
 }
 
 function goToMatchmaking(difficulty: AiDifficulty): void {
@@ -253,6 +286,7 @@ function startMatch(): void {
   onlineMode = false;
   localPlayerId = 'teamA-0';
   humanNames = {}; // sem isso, um apelido de uma partida online anterior podia vazar pro rótulo do bot da IA
+  humanColors = {};
   botNameAssignment = assignFictionalNames(['teamB-0']);
   resetMatchVisuals();
 }
@@ -309,13 +343,14 @@ function connectOnline(mode: OnlineJoinMode): void {
 
   client.connect({
     onOpen: () => {
-      if (mode.kind === 'quickMatch') client.requestQuickMatch(mode.teamSize, displayName, matchSettings);
-      else if (mode.kind === 'createRoom') client.requestCreateRoom(mode.teamSize, displayName, matchSettings);
-      else client.requestJoinRoom(mode.code, displayName);
+      if (mode.kind === 'quickMatch') client.requestQuickMatch(mode.teamSize, displayName, matchSettings, avatarColor);
+      else if (mode.kind === 'createRoom') client.requestCreateRoom(mode.teamSize, displayName, matchSettings, avatarColor);
+      else client.requestJoinRoom(mode.code, displayName, avatarColor);
     },
-    onAssigned: (playerId, names) => {
+    onAssigned: (playerId, names, colors) => {
       assignedPlayerId = playerId;
       humanNames = names;
+      humanColors = colors;
     },
     onRoomCreated: (code) => {
       matchmakingScreen.showRoomCreated(code, buildRoomLink(code));
@@ -476,11 +511,12 @@ function onReplayOverlaySkipOrBack(): void {
   state = { ...state, phaseTimer: 0 };
 }
 
-const menuScreen = new MenuScreen(goToDifficulty, goToOnlineMatchmaking, goToCreateOnlineRoom, goToReplaysList, goToMatchSettings, (name) => {
+const menuScreen = new MenuScreen(goToDifficulty, goToOnlineMatchmaking, goToCreateOnlineRoom, goToReplaysList, goToMatchSettings, goToAvatarColor, (name) => {
   displayName = name;
 });
 const difficultyScreen = new DifficultyScreen(goToMatchmaking, goToMenu);
 const matchSettingsScreen = new MatchSettingsScreen(onMatchSettingsChange, goToMenu);
+const avatarColorScreen = new AvatarColorScreen(onAvatarColorChange, goToMenu);
 const matchmakingScreen = new MatchmakingScreen(onMatchmakingCancel, onMatchmakingStartNow);
 const endGameScreen = new EndGameScreen(goToMenu, claimRematchBonus);
 const savedReplaysScreen = new SavedReplaysScreen(watchSavedReplay, deleteSavedReplay, goToMenu);
@@ -649,8 +685,8 @@ function update(dt: number): void {
   updateMatch(dt);
 }
 
-function renderPlayerWithBadge(player: Parameters<typeof renderPlayer>[2], color: string, label?: string): void {
-  renderPlayer(ctx, camera, player, color);
+function renderPlayerWithBadge(player: Parameters<typeof renderPlayer>[2], fill: AvatarColor, label?: string): void {
+  renderPlayer(ctx, camera, player, fill);
   // player-badge (seção 10.1): "patrocínio premium" — escudo pequeno no
   // avatar. Por cima do jogador, então desenhado logo depois dele, não
   // antes (a regra "atrás de jogador/bola" da seção 10.3 é só pros slots
@@ -664,7 +700,7 @@ function renderPlayerWithBadge(player: Parameters<typeof renderPlayer>[2], color
 // de jogo e o replay de gol têm rótulo, ver renderReplaySnapshot).
 function renderAllPlayers(): void {
   for (const player of Object.values(state.players)) {
-    renderPlayerWithBadge(player, player.teamId === 'teamA' ? THEME.TEAM_1 : THEME.TEAM_2, nameFor(player.id));
+    renderPlayerWithBadge(player, colorFor(player), nameFor(player.id));
   }
 }
 
@@ -684,8 +720,7 @@ function renderReplaySnapshot(snapshot: ReplaySnapshot): void {
   const ball = ballFromSnapshot(snapshot);
   for (const id of Object.keys(snapshot.players) as PlayerId[]) {
     const player = playerFromSnapshot(id, snapshot);
-    const color = player.teamId === 'teamA' ? THEME.TEAM_1 : THEME.TEAM_2;
-    renderPlayerWithBadge(player, color, nameFor(id));
+    renderPlayerWithBadge(player, colorFor(player), nameFor(id));
   }
   renderBallWithSkin(ball);
 }

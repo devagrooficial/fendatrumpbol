@@ -16,8 +16,8 @@ import { step } from '../../src/futtrool/core/simulation';
 import { createMatchState } from '../../src/futtrool/core/rules';
 import { createAiState, decideCommand, type AiState } from '../../src/futtrool/core/ai/brain';
 import { AI_PROFILES } from '../../src/futtrool/core/ai/profiles';
-import { FIXED_TIMESTEP_S, MATCH, MATCH_SETTINGS_OPTIONS } from '../../src/futtrool/core/constants';
-import type { Command, GameState, MatchSettings, PlayerId, TeamId } from '../../src/futtrool/core/types';
+import { AVATAR_COLOR_PALETTE, DEFAULT_AVATAR_COLOR, FIXED_TIMESTEP_S, MATCH, MATCH_SETTINGS_OPTIONS } from '../../src/futtrool/core/constants';
+import type { AvatarColor, AvatarColorMode, Command, GameState, MatchSettings, PlayerId, TeamId } from '../../src/futtrool/core/types';
 import type { ClientMessage, ServerMessage } from '../../src/futtrool/net/protocol';
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -53,6 +53,21 @@ function sanitizeMatchSettings(raw: unknown): MatchSettings {
     ? (value!.goalsToWin as number)
     : DEFAULT_MATCH_SETTINGS.goalsToWin;
   return { durationMs, goalsToWin };
+}
+
+const AVATAR_COLOR_MODE_COUNT: Record<AvatarColorMode, number> = { solid: 1, duo: 2, gradient: 2 };
+
+// Mesma validação do lado do cliente (progression/avatarColor.ts) —
+// repetida aqui porque o servidor nunca confia no que o cliente manda: só
+// aceita cor da paleta oficial, com a quantidade certa pro modo escolhido.
+function sanitizeAvatarColor(raw: unknown): AvatarColor {
+  const value = raw as Partial<AvatarColor> | undefined;
+  const mode: AvatarColorMode =
+    value?.mode === 'solid' || value?.mode === 'duo' || value?.mode === 'gradient' ? value.mode : DEFAULT_AVATAR_COLOR.mode;
+  const needed = AVATAR_COLOR_MODE_COUNT[mode];
+  const valid = Array.isArray(value?.colors) ? value.colors.filter((c): c is string => AVATAR_COLOR_PALETTE.includes(c)) : [];
+  const colors = Array.from({ length: needed }, (_, i) => valid[i] ?? AVATAR_COLOR_PALETTE[i % AVATAR_COLOR_PALETTE.length]!); // módulo garante índice válido
+  return { mode, colors };
 }
 
 const NEUTRAL_COMMAND: Command = { tick: 0, move: { x: 0, y: 0 }, kickHeld: false, dash: false, boost: false };
@@ -112,6 +127,7 @@ class Room {
     roster: Record<TeamId, PlayerId[]>,
     humanSockets: Partial<Record<PlayerId, WebSocket>>,
     names: Record<PlayerId, string>,
+    colors: Record<PlayerId, AvatarColor>,
     matchSettings: MatchSettings,
     onEnded: () => void,
   ) {
@@ -126,7 +142,7 @@ class Room {
       this.commands[id] = NEUTRAL_COMMAND;
       const ws = humanSockets[id];
       if (ws) {
-        send(ws, { type: 'assigned', playerId: id, names });
+        send(ws, { type: 'assigned', playerId: id, names, colors });
         // Substitui o listener de 'message' que o pareamento usava (join
         // request) — a partir daqui só interessa 'command'.
         ws.removeAllListeners('message');
@@ -197,7 +213,7 @@ class Room {
 // bot).
 // ---------------------------------------------------------------------------
 
-type LobbyEntry = { ws: WebSocket; name: string };
+type LobbyEntry = { ws: WebSocket; name: string; avatarColor: AvatarColor };
 
 type Lobby = {
   teamSize: number;
@@ -237,18 +253,20 @@ function startLobby(lobby: Lobby): void {
   const roster = buildRoster(lobby.teamSize);
   const humanSockets: Partial<Record<PlayerId, WebSocket>> = {};
   const names = {} as Record<PlayerId, string>;
-  lobby.entries.forEach(({ ws, name }, i) => {
+  const colors = {} as Record<PlayerId, AvatarColor>;
+  lobby.entries.forEach(({ ws, name, avatarColor }, i) => {
     const id = slotToPlayerId(lobby.teamSize, i);
     humanSockets[id] = ws;
     names[id] = name;
+    colors[id] = avatarColor;
   });
 
-  const room = new Room(roster, humanSockets, names, lobby.matchSettings, () => rooms.delete(room));
+  const room = new Room(roster, humanSockets, names, colors, lobby.matchSettings, () => rooms.delete(room));
   rooms.add(room);
 }
 
-function joinLobby(lobby: Lobby, ws: WebSocket, name: string): void {
-  lobby.entries.push({ ws, name });
+function joinLobby(lobby: Lobby, ws: WebSocket, name: string, avatarColor: AvatarColor): void {
+  lobby.entries.push({ ws, name, avatarColor });
   socketLobby.set(ws, lobby);
   if (lobby.entries.length >= lobbyCapacity(lobby)) {
     startLobby(lobby);
@@ -301,7 +319,7 @@ wss.on('connection', (ws) => {
         lobby = { teamSize, code: null, entries: [], matchSettings: sanitizeMatchSettings(parsed.matchSettings) };
         publicLobbies.set(teamSize, lobby);
       }
-      joinLobby(lobby, ws, sanitizeName(parsed.name));
+      joinLobby(lobby, ws, sanitizeName(parsed.name), sanitizeAvatarColor(parsed.avatarColor));
       return;
     }
 
@@ -311,7 +329,7 @@ wss.on('connection', (ws) => {
       const lobby: Lobby = { teamSize, code, entries: [], matchSettings: sanitizeMatchSettings(parsed.matchSettings) };
       privateLobbies.set(code, lobby);
       send(ws, { type: 'roomCreated', code });
-      joinLobby(lobby, ws, sanitizeName(parsed.name));
+      joinLobby(lobby, ws, sanitizeName(parsed.name), sanitizeAvatarColor(parsed.avatarColor));
       return;
     }
 
@@ -321,7 +339,7 @@ wss.on('connection', (ws) => {
         send(ws, { type: 'roomNotFound' });
         return;
       }
-      joinLobby(lobby, ws, sanitizeName(parsed.name));
+      joinLobby(lobby, ws, sanitizeName(parsed.name), sanitizeAvatarColor(parsed.avatarColor));
       return;
     }
 

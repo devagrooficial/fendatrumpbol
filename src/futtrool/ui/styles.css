@@ -349,6 +349,46 @@ html, body {
   color: #0b0b0e;
 }
 
+/* Tela "Cor do avatar" (AvatarColorScreen): preview circular + grade de
+   swatches da paleta oficial (AVATAR_COLOR_PALETTE, core/constants.ts). */
+.avatar-preview-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.avatar-preview {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  border: 4px solid #d9d9dd;
+  background: #e93d82;
+}
+
+.avatar-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.avatar-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid rgba(253, 246, 255, 0.2);
+  cursor: pointer;
+  padding: 0;
+  transition: border-color 120ms ease, transform 120ms ease;
+}
+
+.avatar-swatch--selected {
+  border-color: #fdf6ff;
+  transform: scale(1.15);
+}
+
+.avatar-color2-field--hidden {
+  display: none;
+}
+
 .screen__field-row {
   display: flex;
   gap: 0.5rem;
