@@ -136,7 +136,7 @@ class AudioEngine {
     for (const [freq, delay] of notes) {
       this.tone(freq, 0.22, 'square', 0.14, undefined, delay);
     }
-    this.crowdCheer(1.4, 0.22);
+    this.crowdCheer(1.4, 0.022);
   }
 
   private crowdCheer(duration: number, peakGain: number): void {
