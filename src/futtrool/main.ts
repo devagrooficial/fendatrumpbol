@@ -51,6 +51,7 @@ import { ReplayStore, type SavedReplay } from './replay/storage';
 import { MatchStatsStore } from './stats/storage';
 import { adManager } from './ads/adManager';
 import { loadAdsConfig } from './ads/loadAdsConfig';
+import { startVoice, stopVoice } from './voice/jitsiVoice';
 
 // Sistema de publicidade (spec seção 10) — carregado uma vez no boot, do
 // Supabase (public.ad_creatives, editável ao vivo pelo painel de admin,
@@ -179,6 +180,16 @@ let pendingOnlineEvents: MatchEvent[] = [];
 let inTournamentMatch = false;
 let lastTournamentSnapshot: TournamentSnapshot | null = null;
 let lastTournamentYourSlot: number | null = null;
+// Sala de voz do MEU TIME (dupla/trio) no campeonato — só entre parceiros
+// de time, nunca com o adversário (diferente de assignedVoiceRoomId em
+// connectTournament, que é a partida em si). `null` pra quem joga sozinho
+// (1v1 não forma time nenhum, ver TournamentSetupScreen) — nesse caso
+// syncTournamentTeamVoice() nunca liga a voz. Persiste do começo da
+// formação do time até sair do torneio (mesmo código do convite, ver
+// onTournamentTeamWaiting), sobrevivendo à transição pra fila e pro
+// bracket — só quem PAUSA essa sala é a partida em si (startTournamentMatchPlay
+// assume o canal de voz enquanto joga, com o adversário junto).
+let tournamentTeamVoiceRoomId: string | null = null;
 
 const progressionStore = new ProgressionStore();
 let progression: ProgressionState = progressionStore.load();
@@ -334,12 +345,33 @@ function goToMenuWithNotice(text: string): void {
 }
 
 function onMatchmakingCancel(): void {
+  stopVoice();
   onlineClient?.disconnect();
   onlineClient = null;
   goToMenu();
 }
 
-function startOnlineMatch(initialState: GameState, playerId: PlayerId): void {
+// `humanNames` inclui eu mesmo (ver protocol.ts 'assigned') — mais de 1
+// entrada significa que tem PELO MENOS outra pessoa de verdade na
+// partida (adversário ou parceiro de time), único caso em que vale a
+// pena pedir microfone; sozinho contra bot não tem com quem falar.
+function startVoiceIfAccompanied(voiceRoomId: string): void {
+  if (Object.keys(humanNames).length > 1) startVoice(voiceRoomId, displayName);
+}
+
+// Liga/mantém a voz do TIME (tournamentTeamVoiceRoomId) enquanto o time
+// forma/espera/acompanha o bracket — nunca mexe durante a partida em si
+// (appScreen === 'match' já tem sua própria sala de voz, com o
+// adversário junto, ver startTournamentMatchPlay). `memberCount` decide
+// se liga (só faz sentido com 2+ pessoas de verdade no time — sozinho
+// esperando o resto completar não tem com quem falar ainda).
+function syncTournamentTeamVoice(memberCount: number): void {
+  if (appScreen === 'match') return;
+  if (tournamentTeamVoiceRoomId && memberCount > 1) startVoice(tournamentTeamVoiceRoomId, displayName);
+  else stopVoice();
+}
+
+function startOnlineMatch(initialState: GameState, playerId: PlayerId, voiceRoomId: string): void {
   state = initialState;
   onlineMode = true;
   localPlayerId = playerId;
@@ -350,6 +382,7 @@ function startOnlineMatch(initialState: GameState, playerId: PlayerId): void {
   const botIds = (Object.keys(initialState.players) as PlayerId[]).filter((id) => !(id in humanNames));
   botNameAssignment = assignFictionalNames(botIds);
   resetMatchVisuals();
+  startVoiceIfAccompanied(voiceRoomId);
 }
 
 // Igual startOnlineMatch, mas marca `inTournamentMatch` — o único jeito
@@ -358,13 +391,14 @@ function startOnlineMatch(initialState: GameState, playerId: PlayerId): void {
 // de torneio nunca tem bot (ver server/src/index.ts) — não precisa
 // calcular botNameAssignment de verdade, mas mantém vazio por segurança
 // (nameFor() já cai pro próprio playerId se não achar ninguém).
-function startTournamentMatchPlay(initialState: GameState, playerId: PlayerId): void {
+function startTournamentMatchPlay(initialState: GameState, playerId: PlayerId, voiceRoomId: string): void {
   state = initialState;
   onlineMode = true;
   localPlayerId = playerId;
   inTournamentMatch = true;
   botNameAssignment = {};
   resetMatchVisuals();
+  startVoiceIfAccompanied(voiceRoomId);
 }
 
 // Como pedir pareamento pro servidor depois que a conexão abrir (ver
@@ -398,6 +432,7 @@ async function connectOnline(mode: OnlineJoinMode): Promise<void> {
   const client = new OnlineClient();
   onlineClient = client;
   let assignedPlayerId: PlayerId | null = null;
+  let assignedVoiceRoomId: string | null = null;
   let matchStarted = false;
 
   client.connect({
@@ -406,8 +441,9 @@ async function connectOnline(mode: OnlineJoinMode): Promise<void> {
       else if (mode.kind === 'createRoom') client.requestCreateRoom(mode.teamSize, displayName, matchSettings, avatarColor, authToken);
       else client.requestJoinRoom(mode.code, displayName, avatarColor, authToken);
     },
-    onAssigned: (playerId, names, colors) => {
+    onAssigned: (playerId, names, colors, voiceRoomId) => {
       assignedPlayerId = playerId;
+      assignedVoiceRoomId = voiceRoomId;
       humanNames = names;
       humanColors = colors;
     },
@@ -427,23 +463,26 @@ async function connectOnline(mode: OnlineJoinMode): Promise<void> {
         // Servidor sempre manda 'assigned' antes do primeiro 'state' (ver
         // server/src/index.ts) — na prática nunca é null aqui, o fallback é
         // só pra não deixar o tipo escapar como PlayerId | null.
-        startOnlineMatch(newState, assignedPlayerId ?? 'teamA-0');
+        startOnlineMatch(newState, assignedPlayerId ?? 'teamA-0', assignedVoiceRoomId ?? '');
         return;
       }
       state = newState;
       pendingOnlineEvents.push(...events);
     },
     onOpponentLeft: () => {
+      stopVoice();
       onlineClient = null;
       onlineMode = false;
       goToMenuWithNotice(t('matchmaking.online.opponentLeft'));
     },
     onBanned: () => {
+      stopVoice();
       onlineClient = null;
       onlineMode = false;
       goToMenuWithNotice(t('matchmaking.online.banned'));
     },
     onClose: () => {
+      stopVoice();
       if (appScreen === 'onlineMatchmaking') {
         onlineClient = null;
         goToMenuWithNotice(t('matchmaking.online.connectionFailed'));
@@ -485,12 +524,23 @@ function buildTournamentTeamLink(code: string): string {
 async function connectTournament(mode: TournamentJoinMode): Promise<void> {
   appScreen = 'tournamentWaiting';
   hideAllScreens();
+  // Quem ENTRA com código já sabe ele de antemão (veio do link ou foi
+  // digitado) — não dá pra esperar o servidor ecoar de volta num
+  // 'tournamentTeamWaiting': se essa entrada completar o time na hora
+  // (último membro faltando), o servidor pula direto pra 'tournament' e
+  // NUNCA manda esse eco pra quem entrou (ver joinTournamentTeam em
+  // server/src/index.ts) — sem isso, essa pessoa nunca aprenderia o nome
+  // da sala de voz do próprio time. Quem CRIA o time não sabe o código
+  // ainda nesse ponto (o servidor que gera) — só aprende via
+  // onTournamentTeamCreated mais abaixo.
+  tournamentTeamVoiceRoomId = mode.kind === 'joinTeam' ? `futtrool-team-${mode.code}` : null;
 
   const authToken = supabase ? (await supabase.auth.getSession()).data.session?.access_token : undefined;
 
   const client = new OnlineClient();
   onlineClient = client;
   let assignedPlayerId: PlayerId | null = null;
+  let assignedVoiceRoomId: string | null = null;
   let matchStarted = false;
 
   client.connect({
@@ -499,8 +549,9 @@ async function connectTournament(mode: TournamentJoinMode): Promise<void> {
       else if (mode.kind === 'createTeam') client.requestTournamentCreateTeam(mode.teamSize, displayName, avatarColor, authToken);
       else client.requestTournamentJoinTeam(mode.code, displayName, avatarColor, authToken);
     },
-    onAssigned: (playerId, names, colors) => {
+    onAssigned: (playerId, names, colors, voiceRoomId) => {
       assignedPlayerId = playerId;
+      assignedVoiceRoomId = voiceRoomId;
       humanNames = names;
       humanColors = colors;
       matchStarted = false; // próxima 'state' que chegar é o começo de uma partida NOVA
@@ -511,7 +562,7 @@ async function connectTournament(mode: TournamentJoinMode): Promise<void> {
     onState: (newState, events) => {
       if (!matchStarted) {
         matchStarted = true;
-        startTournamentMatchPlay(newState, assignedPlayerId ?? 'teamA-0');
+        startTournamentMatchPlay(newState, assignedPlayerId ?? 'teamA-0', assignedVoiceRoomId ?? '');
         return;
       }
       state = newState;
@@ -522,24 +573,31 @@ async function connectTournament(mode: TournamentJoinMode): Promise<void> {
       // o servidor já resolve isso e manda um 'tournament' atualizado me
       // colocando como vencedor da vaga; a partida em si já para (Room
       // encerra do lado do servidor), então só ignora aqui (diferente do
-      // multiplayer comum, não é motivo pra voltar pro menu).
+      // multiplayer comum, não é motivo pra voltar pro menu) — mas a
+      // sala de voz DAQUELA partida acabou junto, então encerra ela.
+      stopVoice();
     },
     onBanned: () => {
+      stopVoice();
       onlineClient = null;
       onlineMode = false;
       goToMenuWithNotice(t('matchmaking.online.banned'));
     },
     onClose: () => {
+      stopVoice();
       if (appScreen === 'tournamentWaiting' || appScreen === 'tournamentBracket') {
         onlineClient = null;
         onlineMode = false;
         goToMenuWithNotice(t('matchmaking.online.connectionFailed'));
       }
     },
-    onTournamentTeamCreated: () => {
+    onTournamentTeamCreated: (code) => {
       // O servidor manda 'tournamentTeamWaiting' logo em seguida, já com
       // o retrato completo (teamSize/membros) — essa mensagem aqui só
       // confirma que o código existe, não precisa fazer nada com a UI.
+      // Guarda já o nome da sala de voz do time (mesmo código do convite)
+      // pra quando o segundo membro entrar — ver onTournamentTeamWaiting.
+      tournamentTeamVoiceRoomId = `futtrool-team-${code}`;
     },
     onTournamentTeamNotFound: () => {
       onlineClient = null;
@@ -549,6 +607,11 @@ async function connectTournament(mode: TournamentJoinMode): Promise<void> {
       appScreen = 'tournamentWaiting';
       hideAllScreens();
       tournamentWaitingScreen.showTeamFormation(team, buildTournamentTeamLink(team.code), displayName);
+      // Também cobre quem ENTROU com o código (nunca recebe
+      // 'tournamentTeamCreated', só isso aqui) — mesmo nome de sala nos
+      // dois casos, sempre `team.code`.
+      tournamentTeamVoiceRoomId = `futtrool-team-${team.code}`;
+      syncTournamentTeamVoice(team.members.length);
     },
     onTournament: (tournament, yourSlot) => {
       lastTournamentSnapshot = tournament;
@@ -559,16 +622,22 @@ async function connectTournament(mode: TournamentJoinMode): Promise<void> {
         hideAllScreens();
         const myTeamNames = yourSlot !== null ? (tournament.teams[yourSlot]?.names ?? [displayName]) : [displayName];
         tournamentWaitingScreen.showTournamentQueue(tournament, myTeamNames, displayName, progression);
+        syncTournamentTeamVoice(myTeamNames.length);
         return;
       }
 
       // 'active' ou 'completed': se a partida atual já estiver rolando
       // (appScreen === 'match'), não pisa na tela — 'assigned'/'state' já
-      // cuidam da transição pra partida seguinte quando ela começar.
+      // cuidam da transição pra partida seguinte quando ela começar (nem
+      // mexe na voz aqui: syncTournamentTeamVoice já se recusa a fazer
+      // isso com appScreen === 'match', é só uma otimização evitar até a
+      // chamada).
       if (appScreen === 'match') return;
       appScreen = 'tournamentBracket';
       hideAllScreens();
       tournamentBracketScreen.show(tournament, yourSlot);
+      const myTeamNames = yourSlot !== null ? (tournament.teams[yourSlot]?.names ?? [displayName]) : [displayName];
+      syncTournamentTeamVoice(myTeamNames.length);
     },
     onTournamentFull: () => {
       onlineClient = null;
@@ -599,14 +668,18 @@ function joinTournamentTeamByCode(code: string): void {
 // watchTournamentDisconnect). Mesmo botão físico nas duas telas, mesma
 // ação — sair da conexão sempre volta pro menu.
 function leaveTournament(): void {
+  stopVoice();
   onlineClient?.disconnect();
   onlineClient = null;
   lastTournamentSnapshot = null;
   lastTournamentYourSlot = null;
+  tournamentTeamVoiceRoomId = null;
   goToMenu();
 }
 
 function endMatchFlow(): void {
+  stopVoice();
+
   // A partir daqui `update()` para de chamar `fx.update(dt)` (só roda com
   // appScreen === 'match'), então o shakeTimer do último gol ficaria
   // travado num valor > 0 pra sempre — e o render() continua chamando
@@ -692,6 +765,7 @@ function endMatchFlow(): void {
 // a moeda ganha é creditada na hora (sem a divisão exitCoins/bonusCoins
 // de "Mais uma!", que não existe aqui).
 function endTournamentMatchFlow(): void {
+  stopVoice();
   fx.reset();
 
   const myTeam = teamOf(localPlayerId);

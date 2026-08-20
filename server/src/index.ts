@@ -238,7 +238,7 @@ class Room {
       this.commands[id] = NEUTRAL_COMMAND;
       const ws = humanSockets[id];
       if (ws) {
-        send(ws, { type: 'assigned', playerId: id, names, colors });
+        send(ws, { type: 'assigned', playerId: id, names, colors, voiceRoomId: `futtrool-${this.id}` });
         // Substitui o listener de 'message' que o pareamento usava (join
         // request) — a partir daqui só interessa 'command'.
         ws.removeAllListeners('message');

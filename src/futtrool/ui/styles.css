@@ -304,6 +304,12 @@ html, body {
   color: #4ade80;
 }
 
+.screen__placeholder-note--warning {
+  color: #ffb020;
+  font-weight: 600;
+  margin-bottom: 0.6rem;
+}
+
 .screen__field {
   display: flex;
   flex-direction: column;
@@ -798,6 +804,64 @@ html, body {
 
 .replay-overlay__bottom-bar .screen__button {
   width: auto;
+}
+
+/* ---------------------------------------------------------------------
+   Canal de voz (Jitsi, ver src/futtrool/voice/jitsiVoice.ts) — pill
+   flutuante sobre o campo durante uma partida online; o iframe de
+   verdade fica fora da tela, só o áudio importa.
+   --------------------------------------------------------------------- */
+
+.voice-widget__iframe-host {
+  position: fixed;
+  left: -9999px;
+  top: -9999px;
+  width: 10px;
+  height: 10px;
+  overflow: hidden;
+}
+
+.voice-widget {
+  position: fixed;
+  top: 0.9rem;
+  right: 0.9rem;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.7rem;
+  background: rgba(11, 11, 14, 0.6);
+  border-radius: 999px;
+}
+
+.voice-widget__toggle {
+  width: 1.8rem;
+  height: 1.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 999px;
+  background: rgba(253, 246, 255, 0.12);
+  color: #fdf6ff;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.voice-widget__toggle:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.voice-widget__toggle--live {
+  background: rgba(74, 222, 128, 0.85);
+}
+
+.voice-widget__status {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: rgba(253, 246, 255, 0.75);
 }
 
 /* Lista de replays salvos */

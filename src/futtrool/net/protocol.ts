@@ -82,8 +82,12 @@ export type ServerMessage =
   // `names`/`colors` cobrem TODOS os slots com humano de verdade nessa
   // partida (inclusive quem está recebendo a mensagem) — quem não aparece
   // aqui é bot (o cliente gera apelido fictício e mantém a cor do time pra
-  // esses, ver ui/botNames.ts e render/theme.ts).
-  | { type: 'assigned'; playerId: PlayerId; names: Record<PlayerId, string>; colors: Record<PlayerId, AvatarColor> }
+  // esses, ver ui/botNames.ts e render/theme.ts). `voiceRoomId` é o nome da
+  // sala de voz (Jitsi, ver src/futtrool/voice/) dessa partida — igual pra
+  // todo mundo nela (o próprio roomId interno da Room, ver
+  // server/src/index.ts), então basta todo mundo entrar na mesma sala de
+  // voz sem precisar de nenhuma outra combinação entre cliente e servidor.
+  | { type: 'assigned'; playerId: PlayerId; names: Record<PlayerId, string>; colors: Record<PlayerId, AvatarColor>; voiceRoomId: string }
   | { type: 'roomCreated'; code: string }
   | { type: 'roomNotFound' }
   // Progresso de uma sala (privada ou fila pública) ainda esperando gente —

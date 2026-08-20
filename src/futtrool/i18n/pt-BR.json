@@ -74,6 +74,13 @@
   "matchmaking.online.banned": "Essa conta foi banida do multiplayer",
   "matchmaking.cancel": "Cancelar",
 
+  "voice.connecting": "Conectando…",
+  "voice.connected": "Voz ativa",
+  "voice.disconnected": "Voz encerrada",
+  "voice.error": "Voz indisponível",
+  "voice.mute": "Silenciar microfone",
+  "voice.unmute": "Ativar microfone",
+
   "tournament.setup.title": "Campeonato",
   "tournament.setup.subtitle": "Escolha como quer entrar",
   "tournament.setup.solo": "1v1 · Sozinho",
@@ -81,6 +88,7 @@
   "tournament.setup.team": "{size}v{size} · Criar time",
   "tournament.setup.teamDesc": "Gera um link pra convidar amigos — juntos, formam UMA vaga da chave",
   "tournament.setup.back": "Voltar",
+  "tournament.setup.disconnectWarning": "⚠️ No campeonato não tem perdão pra conexão ruim: se cair (mesmo que só oscile), é W.O. na hora e você sai da chave.",
 
   "tournament.waiting.title": "Campeonato",
   "tournament.waiting.slots": "{filled} de {total} vagas preenchidas",

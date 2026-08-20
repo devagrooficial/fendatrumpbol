@@ -12,6 +12,7 @@ dist
 dist-ssr
 coverage
 *.local
+jitsi/.env
 
 # Editor directories and files
 .vscode/*

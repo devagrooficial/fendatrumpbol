@@ -1,0 +1,222 @@
+# Deploy no hdservlog (Docker Swarm, "SetupOrion") — mesmo padrão isolado
+# do server/stack.yml: stack própria, sem tocar em nenhum serviço/rede
+# existente (Chatwoot, n8n, Evolution API, Supabase self-hosted, MinIO,
+# Portainer, postgres solo, pgvector), só anexa na mesma rede overlay que
+# o Traefik já escuta (hdservlognet) pro componente "web".
+#
+# Por que os limites de RAM/CPU abaixo em CADA serviço (não é enfeite):
+# checado em 2026-08-20 direto na VPS (`free -h`/`nproc`/`docker stats`) —
+# só 2 vCPU no total e ~2GB de RAM "available" (Linux já usa o resto pra
+# buff/cache) sobrando depois dos 29 containers que já rodam aí. Sem teto
+# explícito, os componentes Java do Jitsi (jicofo/jvb) usam por padrão um
+# heap dimensionado pra servidor dedicado de videoconferência (JVB sozinho
+# assume 3072m de heap se não for limitado) — num pico de chamada isso
+# comeria memória de quem não pode ser mexido. `deploy.resources.limits` é
+# um TETO (cgroup), não reserva: enquanto o Jitsi está ocioso, o resto dos
+# serviços não perde nada; só entra em ação se o Jitsi tentar passar do
+# combinado. Como é canal de VOZ (sem vídeo, ver STACK.md/config abaixo),
+# o JVB não faz transcodificação nenhuma — só repassa pacote de áudio, é
+# leve de CPU por participante mesmo nesses limites.
+#
+# Primeiro deploy:
+#   1. Criar registro DNS tipo A pro domínio escolhido -> IP da VPS (ver
+#      jitsi/.env.example) — sem isso o Traefik não emite certificado.
+#   2. cp jitsi/.env.example jitsi/.env — preencher domínio + gerar as
+#      duas senhas com `openssl rand -hex 24` (jitsi/.env nunca vai pro
+#      git, ver .gitignore).
+#   3. scp jitsi/stack.yml jitsi/.env futtrool-vps:~/jitsi/
+#   4. ssh futtrool-vps
+#   5. cd ~/jitsi && docker stack deploy -c stack.yml jitsi
+#
+# Checar depois: `docker service ls | grep jitsi` (4 serviços 1/1) e
+# `docker stats --no-stream | grep jitsi` pra confirmar que ficou dentro
+# dos limites abaixo e não afetou o resto.
+
+version: "3.7"
+
+# SEM `read_only: true` + tmpfs de propósito — não é o que foi pedido,
+# era hardening extra que eu tinha colocado e que não sobrevive no Swarm:
+# o `tmpfs:` curto do Compose some silenciosamente em `docker stack
+# deploy` (raiz fica read-only sem /run gravável, s6-overlay quebra), e a
+# sintaxe longa (`type: tmpfs` em volumes:) não deixa marcar /run como
+# executável — o próprio init do container (s6-overlay) precisa disso pra
+# rodar, então falha com "Permission denied" mesmo com o mount presente.
+# Root filesystem normal (gravável) resolve, e os limites de RAM/CPU (o
+# que realmente protege o resto da VPS) continuam valendo do mesmo jeito.
+
+services:
+  # XMPP server — controla quem entra em cada sala/MUC. Leve, não é Java.
+  jitsi_prosody:
+    image: ${JITSI_IMAGE_REPO:-ghcr.io/jitsi}/prosody:${JITSI_IMAGE_VERSION:-stable-11146-2}
+    volumes:
+      - jitsi_prosody_config:/config
+      - jitsi_prosody_storage:/var/lib/prosody
+      - jitsi_prosody_plugins:/prosody-plugins-custom
+    environment:
+      - TZ=America/Sao_Paulo
+      - PUBLIC_URL=${PUBLIC_URL}
+      - XMPP_DOMAIN=meet.jitsi
+      - XMPP_AUTH_DOMAIN=auth.meet.jitsi
+      - XMPP_GUEST_DOMAIN=guest.meet.jitsi
+      - XMPP_MUC_DOMAIN=muc.meet.jitsi
+      - XMPP_INTERNAL_MUC_DOMAIN=internal-muc.meet.jitsi
+      - XMPP_RECORDER_DOMAIN=recorder.meet.jitsi
+      - JICOFO_AUTH_PASSWORD=${JICOFO_AUTH_PASSWORD}
+      - JVB_AUTH_USER=jvb
+      - JVB_AUTH_PASSWORD=${JVB_AUTH_PASSWORD}
+    networks:
+      jitsi_net:
+        aliases:
+          - xmpp.meet.jitsi
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+      resources:
+        limits:
+          cpus: "0.3"
+          memory: 256M
+
+  # Focus component — orquestra a conferência (quem fala com quem), sem
+  # relay de mídia nenhum. Java, mas processo pequeno.
+  jitsi_jicofo:
+    image: ${JITSI_IMAGE_REPO:-ghcr.io/jitsi}/jicofo:${JITSI_IMAGE_VERSION:-stable-11146-2}
+    volumes:
+      - jitsi_jicofo_config:/config
+    environment:
+      - TZ=America/Sao_Paulo
+      - JICOFO_AUTH_PASSWORD=${JICOFO_AUTH_PASSWORD}
+      - JICOFO_MAX_MEMORY=256m
+      - JVB_BREWERY_MUC=jvbbrewery
+      - XMPP_DOMAIN=meet.jitsi
+      - XMPP_AUTH_DOMAIN=auth.meet.jitsi
+      - XMPP_INTERNAL_MUC_DOMAIN=internal-muc.meet.jitsi
+      - XMPP_MUC_DOMAIN=muc.meet.jitsi
+      - XMPP_SERVER=xmpp.meet.jitsi
+    networks:
+      - jitsi_net
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+      resources:
+        limits:
+          cpus: "0.3"
+          memory: 384M
+
+  # Videobridge — único componente que retransmite mídia de verdade. Como
+  # é canal SÓ DE ÁUDIO (ver START_AUDIO_ONLY no jitsi_web abaixo), não faz
+  # transcodificação nenhuma (SFU puro), então o custo de CPU por pessoa é
+  # uma fração do que seria com vídeo — mas ainda assim é o único dos 4
+  # componentes cujo teto de CPU vale a pena deixar um pouco mais folgado.
+  #
+  # A porta UDP precisa ser publicada com mode:host (não passa pelo
+  # Traefik, que só faz HTTP/TCP) — é o único jeito do JVB falar com a
+  # rede de verdade pra ICE/NAT funcionar direito. Porta 10000/udp
+  # confirmada livre na VPS antes desse deploy.
+  jitsi_jvb:
+    image: ${JITSI_IMAGE_REPO:-ghcr.io/jitsi}/jvb:${JITSI_IMAGE_VERSION:-stable-11146-2}
+    volumes:
+      - jitsi_jvb_config:/config
+    ports:
+      - target: 10000
+        published: 10000
+        protocol: udp
+        mode: host
+    environment:
+      - TZ=America/Sao_Paulo
+      - JVB_AUTH_USER=jvb
+      - JVB_AUTH_PASSWORD=${JVB_AUTH_PASSWORD}
+      - JVB_BREWERY_MUC=jvbbrewery
+      - JVB_PORT=10000
+      - JVB_ADVERTISE_IPS=${JVB_ADVERTISE_IPS}
+      - DOCKER_HOST_ADDRESS=${JVB_ADVERTISE_IPS}
+      - VIDEOBRIDGE_MAX_MEMORY=384m
+      - XMPP_AUTH_DOMAIN=auth.meet.jitsi
+      - XMPP_INTERNAL_MUC_DOMAIN=internal-muc.meet.jitsi
+      - XMPP_SERVER=xmpp.meet.jitsi
+    networks:
+      - jitsi_net
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+      resources:
+        limits:
+          cpus: "0.6"
+          memory: 512M
+
+  # Frontend (nginx estático + iframe API) — nunca exposto direto, sempre
+  # atrás do Traefik (que já cuida do TLS/Let's Encrypt, igual o
+  # futtrool_ws em server/stack.yml). DISABLE_HTTPS/ENABLE_HTTP_REDIRECT
+  # desligados de propósito: quem termina TLS aqui é o Traefik, não o
+  # nginx interno do Jitsi.
+  #
+  # Config de "canal de voz" (pedido explícito: vídeo desativado por
+  # padrão e sem jeito de ligar pela UI):
+  #   - START_AUDIO_ONLY: entra na sala já em modo só-áudio, nem pede
+  #     permissão de câmera ao navegador.
+  #   - START_WITH_VIDEO_MUTED: reforça o mudo de vídeo mesmo se alguém
+  #     tentar religar via config externa.
+  #   - TOOLBAR_BUTTONS: lista fechada de botões — 'camera' e
+  #     'desktop' (compartilhar tela) ficam de fora de propósito, então
+  #     nem aparece botão pra tentar ligar vídeo.
+  jitsi_web:
+    image: ${JITSI_IMAGE_REPO:-ghcr.io/jitsi}/web:${JITSI_IMAGE_VERSION:-stable-11146-2}
+    volumes:
+      - jitsi_web_config:/config
+      - jitsi_web_storage:/storage
+    environment:
+      - TZ=America/Sao_Paulo
+      - PUBLIC_URL=${PUBLIC_URL}
+      - DISABLE_HTTPS=1
+      - ENABLE_HTTP_REDIRECT=0
+      - ENABLE_WELCOME_PAGE=0
+      - START_AUDIO_ONLY=1
+      - START_WITH_VIDEO_MUTED=1
+      - TOOLBAR_BUTTONS=microphone,chat,raisehand,participants-pane,settings,hangup,fullscreen
+      - XMPP_DOMAIN=meet.jitsi
+      - XMPP_AUTH_DOMAIN=auth.meet.jitsi
+      - XMPP_GUEST_DOMAIN=guest.meet.jitsi
+      - XMPP_MUC_DOMAIN=muc.meet.jitsi
+      - XMPP_BOSH_URL_BASE=http://xmpp.meet.jitsi:5280
+    networks:
+      - jitsi_net
+      - hdservlognet
+    depends_on:
+      - jitsi_jvb
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+      resources:
+        limits:
+          cpus: "0.2"
+          memory: 128M
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.jitsi_web.entrypoints=websecure"
+        - "traefik.http.routers.jitsi_web.rule=Host(`${JITSI_DOMAIN}`)"
+        - "traefik.http.routers.jitsi_web.service=jitsi_web"
+        - "traefik.http.routers.jitsi_web.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.jitsi_web.loadbalancer.passHostHeader=1"
+        - "traefik.http.services.jitsi_web.loadbalancer.server.port=8000"
+
+networks:
+  # Só pra comunicação interna entre os 4 componentes do Jitsi — não
+  # existia antes, criada só por essa stack, não anexa em nada de fora.
+  jitsi_net:
+    driver: overlay
+  hdservlognet:
+    external: true
+    attachable: true
+    name: hdservlognet
+
+volumes:
+  jitsi_prosody_config:
+  jitsi_prosody_storage:
+  jitsi_prosody_plugins:
+  jitsi_jicofo_config:
+  jitsi_jvb_config:
+  jitsi_web_config:
+  jitsi_web_storage:

@@ -20,7 +20,7 @@ export type OnlineClientCallbacks = {
   // Só depois disso o socket aceita send() — é aqui que o chamador manda o
   // "modo" de pareamento (requestQuickMatch/requestCreateRoom/requestJoinRoom).
   onOpen: () => void;
-  onAssigned: (playerId: PlayerId, names: Record<PlayerId, string>, colors: Record<PlayerId, AvatarColor>) => void;
+  onAssigned: (playerId: PlayerId, names: Record<PlayerId, string>, colors: Record<PlayerId, AvatarColor>, voiceRoomId: string) => void;
   onRoomCreated: (code: string) => void;
   onRoomNotFound: () => void;
   onLobbyUpdate: (teamSize: number, filled: Record<TeamId, number>, capacity: number) => void;
@@ -59,7 +59,7 @@ export class OnlineClient {
       } catch {
         return;
       }
-      if (message.type === 'assigned') callbacks.onAssigned(message.playerId, message.names, message.colors);
+      if (message.type === 'assigned') callbacks.onAssigned(message.playerId, message.names, message.colors, message.voiceRoomId);
       else if (message.type === 'roomCreated') callbacks.onRoomCreated(message.code);
       else if (message.type === 'roomNotFound') callbacks.onRoomNotFound();
       else if (message.type === 'lobbyUpdate') callbacks.onLobbyUpdate(message.teamSize, message.filled, message.capacity);

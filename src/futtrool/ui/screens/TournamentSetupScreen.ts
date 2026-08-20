@@ -31,6 +31,7 @@ export class TournamentSetupScreen {
       <div class="screen__panel">
         <h1 class="screen__title">${t('tournament.setup.title')}</h1>
         <p class="screen__subtitle">${t('tournament.setup.subtitle')}</p>
+        <p class="screen__placeholder-note screen__placeholder-note--warning">${t('tournament.setup.disconnectWarning')}</p>
         <button type="button" class="tournament-setup-card tournament-setup-card--solo" data-solo>
           <span class="tournament-setup-card__title">${t('tournament.setup.solo')}</span>
           <span class="tournament-setup-card__desc">${t('tournament.setup.soloDesc')}</span>
