@@ -15,10 +15,18 @@ function formatClock(ms: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-function drawPips(ctx: CanvasRenderingContext2D, centerX: number, y: number, score: number, color: string, direction: 1 | -1): void {
+function drawPips(
+  ctx: CanvasRenderingContext2D,
+  centerX: number,
+  y: number,
+  score: number,
+  goalsToWin: number,
+  color: string,
+  direction: 1 | -1,
+): void {
   const radius = 4;
   const gap = 12;
-  for (let i = 0; i < MATCH.GOALS_TO_WIN; i++) {
+  for (let i = 0; i < goalsToWin; i++) {
     const x = centerX + direction * (10 + i * gap);
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
@@ -56,8 +64,8 @@ export function renderMatchHud(
   ctx.textAlign = 'left';
   ctx.fillText(String(state.score.teamB), centerX + 6, 34);
 
-  drawPips(ctx, centerX - 4, 48, state.score.teamA, THEME.TEAM_1, -1);
-  drawPips(ctx, centerX + 4, 48, state.score.teamB, THEME.TEAM_2, 1);
+  drawPips(ctx, centerX - 4, 48, state.score.teamA, state.matchSettings.goalsToWin, THEME.TEAM_1, -1);
+  drawPips(ctx, centerX + 4, 48, state.score.teamB, state.matchSettings.goalsToWin, THEME.TEAM_2, 1);
 
   // Reta final (últimos MATCH.FINAL_COUNTDOWN_MS, 20s): relógio muda pra
   // cor de alerta o tempo todo, mais um banner curto (3s reais) bem na
