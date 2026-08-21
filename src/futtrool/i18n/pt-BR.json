@@ -94,6 +94,7 @@
   "tournament.waiting.youTag": "você",
   "tournament.waiting.streak": "🔥 {streak}",
   "tournament.waiting.leave": "Sair da fila",
+  "tournament.waiting.startNow": "Começar mesmo assim (com bots)",
   "tournament.waiting.linkLabel": "Link do convite",
   "tournament.waiting.copyLink": "Copiar link",
   "tournament.waiting.formingTeam": "Montando o time",

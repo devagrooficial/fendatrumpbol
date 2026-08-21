@@ -447,6 +447,10 @@ function onMatchmakingStartNow(): void {
   onlineClient?.requestStartNow();
 }
 
+function onTournamentStartNow(): void {
+  onlineClient?.requestTournamentStartNow();
+}
+
 async function connectOnline(mode: OnlineJoinMode): Promise<void> {
   appScreen = 'onlineMatchmaking';
   hideAllScreens();
@@ -914,7 +918,7 @@ const difficultyScreen = new DifficultyScreen(goToMatchmaking, goToMenu);
 const matchSettingsScreen = new MatchSettingsScreen(onMatchSettingsChange, goToMenu);
 const avatarColorScreen = new AvatarColorScreen(onAvatarColorChange, goToMenu);
 const tournamentSetupScreen = new TournamentSetupScreen(onTournamentSetupChoice, goToMenu);
-const tournamentWaitingScreen = new TournamentWaitingScreen(leaveTournament);
+const tournamentWaitingScreen = new TournamentWaitingScreen(leaveTournament, onTournamentStartNow);
 const tournamentBracketScreen = new TournamentBracketScreen(leaveTournament);
 const matchmakingScreen = new MatchmakingScreen(onMatchmakingCancel, onMatchmakingStartNow);
 const endGameScreen = new EndGameScreen(goToMenu, claimRematchBonus);

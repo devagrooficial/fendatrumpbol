@@ -1008,6 +1008,41 @@ function removeFromTournamentQueue(ws: WebSocket): void {
   }
 }
 
+// Preenche as vagas que faltam (até TOURNAMENT_SLOTS) com "times" 100%
+// bot — sockets vazio de propósito: startTournamentMatch monta a Room
+// passando só os sockets de verdade pro roster, e a Room já trata
+// qualquer slot sem socket como bot (mesma lógica de "Começar mesmo
+// assim" do quickMatch, ver Room constructor). Time bot nunca desconecta
+// (sockets.every() num array vazio dá true), então não precisa de
+// nenhuma exceção nova em startTournamentMatch/resolveMatchWinner — só
+// funciona porque as duas funções já tratam sockets como uma lista
+// qualquer, nunca assumem que tem pelo menos 1.
+function fillTournamentWithBots(t: Tournament): void {
+  while (t.teams.length < TOURNAMENT_SLOTS) {
+    const slot = t.teams.length;
+    t.teams.push({
+      slot,
+      sockets: [],
+      names: Array.from({ length: t.teamSize }, () => `Bot ${slot + 1}`),
+      emails: Array.from({ length: t.teamSize }, () => null),
+      avatarColors: Array.from({ length: t.teamSize }, () => DEFAULT_AVATAR_COLOR),
+    });
+  }
+}
+
+// "Começar mesmo assim (com bots)" pro campeonato — só 1v1 por enquanto
+// (pedido explícito: preencher time de dupla/trio inteiro com bot ainda
+// não está no escopo). Só quem já está na FILA (não formando time) pode
+// pedir isso, e só antes da chave começar pra valer.
+function tournamentStartNow(ws: WebSocket): void {
+  const info = socketTournamentQueueSlot.get(ws);
+  if (!info) return;
+  const t = allTournaments.get(info.tournamentId);
+  if (!t || t.status !== 'waiting' || t.teamSize !== 1) return;
+  fillTournamentWithBots(t);
+  startTournament(t);
+}
+
 const wss = new WebSocketServer({ port: PORT });
 
 wss.on('connection', (ws) => {
@@ -1146,6 +1181,11 @@ wss.on('connection', (ws) => {
     if (parsed.type === 'tournamentLeaveQueue') {
       removeFromPendingTeam(ws);
       removeFromTournamentQueue(ws);
+      return;
+    }
+
+    if (parsed.type === 'tournamentStartNow') {
+      tournamentStartNow(ws);
       return;
     }
 

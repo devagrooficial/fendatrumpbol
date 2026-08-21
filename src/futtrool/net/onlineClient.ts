@@ -121,6 +121,10 @@ export class OnlineClient {
     this.sendRaw({ type: 'tournamentLeaveQueue' });
   }
 
+  requestTournamentStartNow(): void {
+    this.sendRaw({ type: 'tournamentStartNow' });
+  }
+
   requestTournamentSpectate(tournamentId: string): void {
     this.sendRaw({ type: 'tournamentSpectate', tournamentId });
   }

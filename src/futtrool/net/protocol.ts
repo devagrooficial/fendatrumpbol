@@ -73,6 +73,11 @@ export type ClientMessage =
   // walkover no servidor), não dá mais pra "desistir da fila" sem
   // consequência.
   | { type: 'tournamentLeaveQueue' }
+  // "Começar mesmo assim (com bots)" — só 1v1 por enquanto (servidor
+  // ignora se o teamSize da vaga não for 1, ver server/src/index.ts
+  // tournamentStartNow). Preenche as vagas que faltam com times 100% bot
+  // e começa a chave na hora, mesmo sem 8 pessoas de verdade.
+  | { type: 'tournamentStartNow' }
   // Assiste à chave de um torneio (ativo ou já encerrado) sem participar
   // — usado tanto por quem já foi eliminado (continua vendo o resto) e
   // quer acompanhar, quanto por quem só quer ver o campeonato de fora.

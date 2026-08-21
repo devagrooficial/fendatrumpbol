@@ -47,7 +47,9 @@ export class TournamentWaitingScreen {
   // voice/jitsiVoice.ts).
   private micUnbind: (() => void) | null = null;
 
-  constructor(onLeave: () => void) {
+  private readonly startNowButton: HTMLButtonElement;
+
+  constructor(onLeave: () => void, onStartNow: () => void) {
     this.root = document.createElement('div');
     this.root.className = 'screen';
     this.root.innerHTML = `
@@ -70,6 +72,7 @@ export class TournamentWaitingScreen {
 
         <div class="tournament-member-cards" data-members></div>
 
+        <button type="button" class="screen__button screen__button--secondary" data-start-now hidden>${t('tournament.waiting.startNow')}</button>
         <button type="button" class="screen__button screen__button--secondary" data-leave>${t('tournament.waiting.leave')}</button>
       </div>
     `;
@@ -83,6 +86,7 @@ export class TournamentWaitingScreen {
     const copyButton = this.root.querySelector<HTMLButtonElement>('[data-copy-link]');
     const copyStatusEl = this.root.querySelector<HTMLParagraphElement>('[data-copy-status]');
     const membersEl = this.root.querySelector<HTMLDivElement>('[data-members]');
+    const startNowButton = this.root.querySelector<HTMLButtonElement>('[data-start-now]');
     const leaveButton = this.root.querySelector<HTMLButtonElement>('[data-leave]');
     if (
       !titleEl ||
@@ -94,6 +98,7 @@ export class TournamentWaitingScreen {
       !copyButton ||
       !copyStatusEl ||
       !membersEl ||
+      !startNowButton ||
       !leaveButton
     ) {
       throw new Error('Markup do TournamentWaitingScreen incompleto');
@@ -106,10 +111,16 @@ export class TournamentWaitingScreen {
     this.linkInput = linkInput;
     this.copyStatusEl = copyStatusEl;
     this.membersEl = membersEl;
+    this.startNowButton = startNowButton;
 
     copyButton.addEventListener('click', () => {
       Audio.click();
       void this.copyLink();
+    });
+
+    startNowButton.addEventListener('click', () => {
+      Audio.click();
+      onStartNow();
     });
 
     leaveButton.addEventListener('click', () => {
@@ -148,6 +159,7 @@ export class TournamentWaitingScreen {
     this.linkFieldEl.hidden = false;
     this.linkInput.value = inviteLink;
     this.copyStatusEl.textContent = '';
+    this.startNowButton.hidden = true; // "com bots" só faz sentido na fila 1v1, ver showTournamentQueue
 
     this.membersEl.innerHTML = team.members.map((m) => memberCardHtml(m.name, m.name === myName)).join('');
     this.rebindMicButton();
@@ -164,6 +176,10 @@ export class TournamentWaitingScreen {
     this.progressEl.hidden = false;
     this.linkFieldEl.hidden = true;
     this.updateDots(tournament.teams.length);
+    // "Começar mesmo assim (com bots)" — só 1v1 por enquanto (preencher
+    // vaga de dupla/trio inteira com bot ainda não está implementado, ver
+    // server/src/index.ts tournamentStartNow).
+    this.startNowButton.hidden = tournament.teamSize !== 1;
 
     if (myTeamNames.length <= 1) {
       this.membersEl.innerHTML = `
