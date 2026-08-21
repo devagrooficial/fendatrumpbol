@@ -807,9 +807,11 @@ html, body {
 }
 
 /* ---------------------------------------------------------------------
-   Canal de voz (Jitsi, ver src/futtrool/voice/jitsiVoice.ts) — pill
-   flutuante sobre o campo durante uma partida online; o iframe de
-   verdade fica fora da tela, só o áudio importa.
+   Canal de voz (Jitsi, ver src/futtrool/voice/jitsiVoice.ts) — o iframe
+   de verdade fica fora da tela (só o áudio importa); a UI de verdade é
+   um botão de mic dentro do card da PRÓPRIA pessoa — ver
+   .tournament-member-card__mic (TournamentWaitingScreen) e
+   .match-voice-hud (dentro da partida em si) mais abaixo.
    --------------------------------------------------------------------- */
 
 .voice-widget__iframe-host {
@@ -821,22 +823,13 @@ html, body {
   overflow: hidden;
 }
 
-.voice-widget {
-  position: fixed;
-  top: 0.9rem;
-  right: 0.9rem;
-  z-index: 25;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.35rem 0.7rem;
-  background: rgba(11, 11, 14, 0.6);
-  border-radius: 999px;
-}
-
-.voice-widget__toggle {
+/* Base do botão de mic, reaproveitada nos dois lugares onde aparece (ver
+   bindMicButton em voice/jitsiVoice.ts, que só mexe nessas classes —
+   quem usa o botão sempre soma essa classe às próprias). */
+.voice-mic-button {
   width: 1.8rem;
   height: 1.8rem;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -844,24 +837,75 @@ html, body {
   border-radius: 999px;
   background: rgba(253, 246, 255, 0.12);
   color: #fdf6ff;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   line-height: 1;
   cursor: pointer;
 }
 
-.voice-widget__toggle:disabled {
+.voice-mic-button:disabled {
   opacity: 0.5;
   cursor: default;
 }
 
-.voice-widget__toggle--live {
+.voice-mic-button--live {
   background: rgba(74, 222, 128, 0.85);
 }
 
-.voice-widget__status {
-  font-size: 0.72rem;
+/* Cards de voz DENTRO da partida (ver ui/MatchVoiceHud.ts) — a partida é
+   100% canvas, sem card de pessoa nenhum por padrão, então essa faixa
+   flutua por cima. Canto superior ESQUERDO de propósito: o HUD desenhado
+   no canvas (placar no centro, ping/IA no canto superior direito, ver
+   ui/hud.ts) já ocupa o resto do topo. */
+.match-voice-hud {
+  position: fixed;
+  top: 0.9rem;
+  left: 0.9rem;
+  z-index: 25;
+  display: none;
+  flex-direction: column;
+  gap: 0.4rem;
+  pointer-events: none;
+}
+
+.match-voice-hud--visible {
+  display: flex;
+}
+
+.match-voice-hud__card {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  background: rgba(11, 11, 14, 0.6);
+  border-radius: 999px;
+  pointer-events: auto;
+}
+
+.match-voice-hud__card--you {
+  background: rgba(233, 61, 130, 0.25);
+}
+
+.match-voice-hud__avatar {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 800 0.62rem 'Segoe UI', system-ui, sans-serif;
+  color: #0b0b0e;
+  background: linear-gradient(135deg, #e93d82, #f5a524);
+}
+
+.match-voice-hud__name {
+  font-size: 0.76rem;
   font-weight: 700;
-  color: rgba(253, 246, 255, 0.75);
+  color: #fdf6ff;
+}
+
+.match-voice-hud__mic {
+  margin-left: 0.2rem;
 }
 
 /* Lista de replays salvos */
@@ -1041,6 +1085,10 @@ html, body {
   font-size: 0.88rem;
   font-weight: 700;
   color: #fdf6ff;
+}
+
+.tournament-member-card__mic {
+  margin-left: auto;
 }
 
 .tournament-member-card--stats {

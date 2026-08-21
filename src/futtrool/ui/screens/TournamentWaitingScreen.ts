@@ -7,6 +7,7 @@
 
 import { t } from '../../i18n';
 import { Audio } from '../../audio/Audio';
+import { bindMicButton } from '../../voice/jitsiVoice';
 import type { ProgressionState } from '../../progression/storage';
 import type { TournamentSnapshot, TournamentTeamFormationSnapshot } from '../../net/protocol';
 
@@ -16,11 +17,15 @@ function initials(name: string): string {
   return name.trim().slice(0, 2).toUpperCase() || '?';
 }
 
+// Botão de mic só no MEU card — o de parceiro de time é só informativo
+// (nome/avatar), não dá pra controlar o microfone de outra pessoa. Sem
+// voz nenhuma (1v1 sozinho, ver showTournamentQueue) nem chama isso.
 function memberCardHtml(name: string, isYou: boolean): string {
   return `
     <div class="tournament-member-card${isYou ? ' tournament-member-card--you' : ''}">
       <span class="tournament-member-card__avatar">${initials(name)}</span>
       <span class="tournament-member-card__name">${name}${isYou ? ` (${t('tournament.waiting.youTag')})` : ''}</span>
+      ${isYou ? '<button type="button" class="tournament-member-card__mic voice-mic-button" data-mic-you></button>' : ''}
     </div>
   `;
 }
@@ -35,6 +40,12 @@ export class TournamentWaitingScreen {
   private readonly linkInput: HTMLInputElement;
   private readonly copyStatusEl: HTMLParagraphElement;
   private readonly membersEl: HTMLDivElement;
+  // Limpeza do bind anterior do botão de mic — os métodos show* abaixo
+  // recriam os cards inteiros via innerHTML a cada atualização, então sem
+  // isso sobraria um listener/assinatura de voiceState apontando pra um
+  // <button> que já nem está mais no DOM (ver bindMicButton em
+  // voice/jitsiVoice.ts).
+  private micUnbind: (() => void) | null = null;
 
   constructor(onLeave: () => void) {
     this.root = document.createElement('div');
@@ -109,6 +120,15 @@ export class TournamentWaitingScreen {
     document.body.appendChild(this.root);
   }
 
+  // Chamar sempre DEPOIS de trocar this.membersEl.innerHTML — procura o
+  // botão do MEU card (se teve um nesse render) e liga ele de novo.
+  private rebindMicButton(): void {
+    this.micUnbind?.();
+    this.micUnbind = null;
+    const micButton = this.membersEl.querySelector<HTMLButtonElement>('[data-mic-you]');
+    if (micButton) this.micUnbind = bindMicButton(micButton);
+  }
+
   private async copyLink(): Promise<void> {
     try {
       await navigator.clipboard.writeText(this.linkInput.value);
@@ -130,6 +150,7 @@ export class TournamentWaitingScreen {
     this.copyStatusEl.textContent = '';
 
     this.membersEl.innerHTML = team.members.map((m) => memberCardHtml(m.name, m.name === myName)).join('');
+    this.rebindMicButton();
 
     this.root.classList.add('screen--visible');
   }
@@ -160,6 +181,7 @@ export class TournamentWaitingScreen {
     } else {
       this.membersEl.innerHTML = myTeamNames.map((name) => memberCardHtml(name, name === myName)).join('');
     }
+    this.rebindMicButton();
 
     this.root.classList.add('screen--visible');
   }
@@ -172,6 +194,8 @@ export class TournamentWaitingScreen {
   }
 
   hide(): void {
+    this.micUnbind?.();
+    this.micUnbind = null;
     this.root.classList.remove('screen--visible');
   }
 }

@@ -75,8 +75,6 @@
   "matchmaking.cancel": "Cancelar",
 
   "voice.connecting": "Conectando…",
-  "voice.connected": "Voz ativa",
-  "voice.disconnected": "Voz encerrada",
   "voice.error": "Voz indisponível",
   "voice.mute": "Silenciar microfone",
   "voice.unmute": "Ativar microfone",

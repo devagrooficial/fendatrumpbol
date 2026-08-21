@@ -6,8 +6,10 @@
 // O servidor já restringe a sala pra só-áudio e sem botão de câmera
 // nenhum (ver jitsi/stack.yml: START_AUDIO_ONLY/TOOLBAR_BUTTONS) — aqui
 // no cliente o iframe de verdade fica fora da tela (só o áudio importa,
-// não tem nada útil pra olhar) e toda interação passa pelo pill
-// flutuante que esse módulo monta, nunca por dentro do iframe em si.
+// não tem nada útil pra olhar). Esse módulo só cuida da CONEXÃO — quem
+// desenha o botão de mic é cada tela, dentro do card da própria pessoa
+// (ver bindMicButton abaixo, usado em TournamentWaitingScreen e
+// ui/MatchVoiceHud.ts), lendo o estado via subscribeVoiceState().
 //
 // Entra sempre MUDO por padrão (startWithAudioMuted) — decisão de UX, não
 // de segurança: ninguém deveria ficar com o microfone ligado sem querer
@@ -17,8 +19,8 @@ import { t } from '../i18n';
 
 const JITSI_DOMAIN = import.meta.env.VITE_JITSI_DOMAIN || 'voz.sysalmeida.com.br';
 
-const MIC_ICON_MUTED = '🔇';
-const MIC_ICON_LIVE = '🎙️';
+export const MIC_ICON_MUTED = '🔇';
+export const MIC_ICON_LIVE = '🎙️';
 
 type JitsiMuteEvent = { muted?: boolean };
 
@@ -70,13 +72,39 @@ function loadJitsiApi(): Promise<JitsiMeetExternalAPIConstructor> {
   return apiScriptPromise;
 }
 
+export type VoiceState = { status: 'idle' | 'connecting' | 'connected' | 'error'; muted: boolean };
+
+const IDLE_STATE: VoiceState = { status: 'idle', muted: true };
+
+let state: VoiceState = IDLE_STATE;
+const listeners = new Set<(state: VoiceState) => void>();
+
+function setState(next: VoiceState): void {
+  state = next;
+  for (const listener of listeners) listener(state);
+}
+
+// Chamado por quem desenha o botão de mic (card da própria pessoa) — já
+// dispara uma vez com o estado atual na hora de assinar, pra não esperar
+// a primeira mudança só pra desenhar o ícone certo.
+export function subscribeVoiceState(listener: (state: VoiceState) => void): () => void {
+  listeners.add(listener);
+  listener(state);
+  return () => listeners.delete(listener);
+}
+
+export function getVoiceState(): VoiceState {
+  return state;
+}
+
+export function toggleMic(): void {
+  active?.api?.executeCommand('toggleAudio');
+}
+
 type VoiceSession = {
   roomId: string;
   api: JitsiMeetExternalAPIInstance | null;
   iframeHost: HTMLDivElement;
-  widget: HTMLDivElement;
-  toggleButton: HTMLButtonElement;
-  statusEl: HTMLSpanElement;
 };
 
 // Uma sessão de voz por vez (uma partida OU o time de campeonato esperando,
@@ -90,8 +118,8 @@ let active: VoiceSession | null = null;
 // Chamado toda vez que o bracket/fila do campeonato atualiza (não só
 // quando MINHA sala de voz muda de verdade) — sem esse early-return, cada
 // atualização não relacionada ao meu time derrubava e reconectava a voz
-// à toa (corte de áudio + reconexão visível no pill a cada mudança no
-// resto da chave).
+// à toa (corte de áudio + reconexão visível a cada mudança no resto da
+// chave).
 export function startVoice(roomId: string, displayName: string): void {
   if (active?.roomId === roomId) return;
   stopVoice();
@@ -103,23 +131,9 @@ export function startVoice(roomId: string, displayName: string): void {
   iframeHost.className = 'voice-widget__iframe-host';
   document.body.appendChild(iframeHost);
 
-  const widget = document.createElement('div');
-  widget.className = 'voice-widget';
-  widget.innerHTML = `
-    <button type="button" class="voice-widget__toggle" data-toggle disabled>${MIC_ICON_MUTED}</button>
-    <span class="voice-widget__status" data-status>${t('voice.connecting')}</span>
-  `;
-  document.body.appendChild(widget);
-
-  const toggleButton = widget.querySelector<HTMLButtonElement>('[data-toggle]');
-  const statusEl = widget.querySelector<HTMLSpanElement>('[data-status]');
-  if (!toggleButton || !statusEl) throw new Error('Markup do voice-widget incompleto');
-  toggleButton.setAttribute('aria-label', t('voice.unmute'));
-
-  const session: VoiceSession = { roomId, api: null, iframeHost, widget, toggleButton, statusEl };
+  const session: VoiceSession = { roomId, api: null, iframeHost };
   active = session;
-
-  toggleButton.addEventListener('click', () => session.api?.executeCommand('toggleAudio'));
+  setState({ status: 'connecting', muted: true });
 
   void loadJitsiApi()
     .then((JitsiMeetExternalAPI) => {
@@ -144,31 +158,51 @@ export function startVoice(roomId: string, displayName: string): void {
 
       api.addEventListener('videoConferenceJoined', () => {
         if (active !== session) return;
-        toggleButton.disabled = false;
-        statusEl.textContent = t('voice.connected');
+        setState({ status: 'connected', muted: true });
       });
       api.addEventListener('audioMuteStatusChanged', (payload) => {
         if (active !== session) return;
-        const muted = payload.muted ?? true;
-        toggleButton.textContent = muted ? MIC_ICON_MUTED : MIC_ICON_LIVE;
-        toggleButton.classList.toggle('voice-widget__toggle--live', !muted);
-        toggleButton.setAttribute('aria-label', t(muted ? 'voice.unmute' : 'voice.mute'));
+        setState({ status: 'connected', muted: payload.muted ?? true });
       });
       api.addEventListener('videoConferenceLeft', () => {
         if (active !== session) return;
-        statusEl.textContent = t('voice.disconnected');
+        setState(IDLE_STATE);
       });
     })
     .catch(() => {
       if (active !== session) return;
-      statusEl.textContent = t('voice.error');
+      setState({ status: 'error', muted: true });
     });
 }
 
 export function stopVoice(): void {
   if (!active) return;
   active.api?.dispose();
-  active.widget.remove();
   active.iframeHost.remove();
   active = null;
+  setState(IDLE_STATE);
+}
+
+// Botão de mic pronto pra usar dentro do card da PRÓPRIA pessoa — reflete
+// o estado ao vivo (ícone/aria-label) e liga o clique em toggleMic().
+// Devolve uma função de limpeza: quem chama precisa guardar e invocar
+// antes de recriar o botão (as telas que usam isso re-renderizam o card
+// inteiro via innerHTML a cada atualização — sem desinscrever, sobra
+// listener acumulado apontando pra um <button> que já nem existe mais no
+// DOM).
+export function bindMicButton(button: HTMLButtonElement): () => void {
+  const render = (s: VoiceState): void => {
+    button.disabled = s.status !== 'connected';
+    button.textContent = s.muted ? MIC_ICON_MUTED : MIC_ICON_LIVE;
+    button.classList.toggle('voice-mic-button--live', s.status === 'connected' && !s.muted);
+    const labelKey = s.status === 'connecting' ? 'voice.connecting' : s.status === 'error' ? 'voice.error' : s.muted ? 'voice.unmute' : 'voice.mute';
+    button.setAttribute('aria-label', t(labelKey));
+  };
+  const unsubscribe = subscribeVoiceState(render);
+  const onClick = (): void => toggleMic();
+  button.addEventListener('click', onClick);
+  return () => {
+    unsubscribe();
+    button.removeEventListener('click', onClick);
+  };
 }

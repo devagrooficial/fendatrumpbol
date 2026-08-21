@@ -52,6 +52,7 @@ import { MatchStatsStore } from './stats/storage';
 import { adManager } from './ads/adManager';
 import { loadAdsConfig } from './ads/loadAdsConfig';
 import { startVoice, stopVoice } from './voice/jitsiVoice';
+import { MatchVoiceHud } from './ui/MatchVoiceHud';
 
 // Sistema de publicidade (spec seção 10) — carregado uma vez no boot, do
 // Supabase (public.ad_creatives, editável ao vivo pelo painel de admin,
@@ -345,7 +346,7 @@ function goToMenuWithNotice(text: string): void {
 }
 
 function onMatchmakingCancel(): void {
-  stopVoice();
+  stopMatchVoice();
   onlineClient?.disconnect();
   onlineClient = null;
   goToMenu();
@@ -355,8 +356,23 @@ function onMatchmakingCancel(): void {
 // entrada significa que tem PELO MENOS outra pessoa de verdade na
 // partida (adversário ou parceiro de time), único caso em que vale a
 // pena pedir microfone; sozinho contra bot não tem com quem falar.
+// Encerra a voz da PARTIDA (o card por jogador some junto) — usado em
+// todo ponto de saída/fim de partida. Some pra hide() mesmo se a HUD
+// nunca chegou a aparecer (partida sozinho contra bot, por exemplo): é
+// só limpar innerHTML vazio de novo, sem efeito nenhum.
+function stopMatchVoice(): void {
+  stopVoice();
+  matchVoiceHud.hide();
+}
+
 function startVoiceIfAccompanied(voiceRoomId: string): void {
-  if (Object.keys(humanNames).length > 1) startVoice(voiceRoomId, displayName);
+  if (Object.keys(humanNames).length <= 1) return;
+  startVoice(voiceRoomId, displayName);
+  const players = (Object.keys(humanNames) as PlayerId[]).map((id) => ({
+    name: id === localPlayerId ? displayName : (humanNames[id] ?? id),
+    isYou: id === localPlayerId,
+  }));
+  matchVoiceHud.show(players);
 }
 
 // Liga/mantém a voz do TIME (tournamentTeamVoiceRoomId) enquanto o time
@@ -364,11 +380,14 @@ function startVoiceIfAccompanied(voiceRoomId: string): void {
 // (appScreen === 'match' já tem sua própria sala de voz, com o
 // adversário junto, ver startTournamentMatchPlay). `memberCount` decide
 // se liga (só faz sentido com 2+ pessoas de verdade no time — sozinho
-// esperando o resto completar não tem com quem falar ainda).
+// esperando o resto completar não tem com quem falar ainda). O card com
+// o botão de mic aqui é o da própria TournamentWaitingScreen (ver
+// bindMicButton em voice/jitsiVoice.ts) — nunca a matchVoiceHud, que é só
+// pra dentro da partida em si.
 function syncTournamentTeamVoice(memberCount: number): void {
   if (appScreen === 'match') return;
   if (tournamentTeamVoiceRoomId && memberCount > 1) startVoice(tournamentTeamVoiceRoomId, displayName);
-  else stopVoice();
+  else stopMatchVoice();
 }
 
 function startOnlineMatch(initialState: GameState, playerId: PlayerId, voiceRoomId: string): void {
@@ -470,19 +489,19 @@ async function connectOnline(mode: OnlineJoinMode): Promise<void> {
       pendingOnlineEvents.push(...events);
     },
     onOpponentLeft: () => {
-      stopVoice();
+      stopMatchVoice();
       onlineClient = null;
       onlineMode = false;
       goToMenuWithNotice(t('matchmaking.online.opponentLeft'));
     },
     onBanned: () => {
-      stopVoice();
+      stopMatchVoice();
       onlineClient = null;
       onlineMode = false;
       goToMenuWithNotice(t('matchmaking.online.banned'));
     },
     onClose: () => {
-      stopVoice();
+      stopMatchVoice();
       if (appScreen === 'onlineMatchmaking') {
         onlineClient = null;
         goToMenuWithNotice(t('matchmaking.online.connectionFailed'));
@@ -575,16 +594,16 @@ async function connectTournament(mode: TournamentJoinMode): Promise<void> {
       // encerra do lado do servidor), então só ignora aqui (diferente do
       // multiplayer comum, não é motivo pra voltar pro menu) — mas a
       // sala de voz DAQUELA partida acabou junto, então encerra ela.
-      stopVoice();
+      stopMatchVoice();
     },
     onBanned: () => {
-      stopVoice();
+      stopMatchVoice();
       onlineClient = null;
       onlineMode = false;
       goToMenuWithNotice(t('matchmaking.online.banned'));
     },
     onClose: () => {
-      stopVoice();
+      stopMatchVoice();
       if (appScreen === 'tournamentWaiting' || appScreen === 'tournamentBracket') {
         onlineClient = null;
         onlineMode = false;
@@ -668,7 +687,7 @@ function joinTournamentTeamByCode(code: string): void {
 // watchTournamentDisconnect). Mesmo botão físico nas duas telas, mesma
 // ação — sair da conexão sempre volta pro menu.
 function leaveTournament(): void {
-  stopVoice();
+  stopMatchVoice();
   onlineClient?.disconnect();
   onlineClient = null;
   lastTournamentSnapshot = null;
@@ -678,7 +697,7 @@ function leaveTournament(): void {
 }
 
 function endMatchFlow(): void {
-  stopVoice();
+  stopMatchVoice();
 
   // A partir daqui `update()` para de chamar `fx.update(dt)` (só roda com
   // appScreen === 'match'), então o shakeTimer do último gol ficaria
@@ -765,7 +784,7 @@ function endMatchFlow(): void {
 // a moeda ganha é creditada na hora (sem a divisão exitCoins/bonusCoins
 // de "Mais uma!", que não existe aqui).
 function endTournamentMatchFlow(): void {
-  stopVoice();
+  stopMatchVoice();
   fx.reset();
 
   const myTeam = teamOf(localPlayerId);
@@ -891,6 +910,7 @@ const matchmakingScreen = new MatchmakingScreen(onMatchmakingCancel, onMatchmaki
 const endGameScreen = new EndGameScreen(goToMenu, claimRematchBonus);
 const savedReplaysScreen = new SavedReplaysScreen(watchSavedReplay, deleteSavedReplay, goToMenu);
 const replayOverlay = new ReplayOverlay(reactToGoalReplay, saveGoalReplay, onReplayOverlaySkipOrBack);
+const matchVoiceHud = new MatchVoiceHud();
 
 // Convite por link (?room=CODE, ver menu.inviteFriend/goToCreateOnlineRoom):
 // quem abre o link cai direto na sala, sem passar pelo menu. Limpa o
