@@ -1356,3 +1356,15 @@ html, body {
   display: block;
   padding: 0.6rem 1.5rem;
 }
+
+/* Só existe depois que o campeão é decidido (ver update() em
+   TournamentBracketScreen.ts) — logo abaixo do troféu, pra quem acabou
+   de ganhar (ou só quer ver o resultado final e ir embora) ter um jeito
+   claro e à mão de sair, sem precisar achar o "Voltar" lá embaixo da
+   página inteira. */
+.bracket__leave-champion {
+  width: auto;
+  white-space: nowrap;
+  padding: 0.6rem 1.4rem;
+  margin-top: 0.4rem;
+}

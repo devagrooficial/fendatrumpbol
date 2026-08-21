@@ -86,6 +86,18 @@ export class TournamentBracketScreen {
       onBack();
     });
 
+    // O botão "Sair do campeonato" (ver update()) só existe depois que o
+    // campeão é decidido, dentro do card do troféu — que é recriado do
+    // zero a cada update() (innerHTML). Delegação num elemento ESTÁVEL
+    // (contentEl, que só troca de conteúdo, nunca é substituído) em vez
+    // de re-buscar/re-ligar o botão toda vez que o retrato do torneio
+    // atualiza.
+    this.contentEl.addEventListener('click', (e) => {
+      if (!(e.target instanceof HTMLElement) || !e.target.closest('[data-leave-champion]')) return;
+      Audio.click();
+      onBack();
+    });
+
     document.body.appendChild(this.root);
   }
 
@@ -132,6 +144,11 @@ export class TournamentBracketScreen {
           <span class="bracket__trophy-icon">🏆</span>
           ${championName ? `<span class="bracket__trophy-name">${championName}</span>` : ''}
         </div>
+        ${
+          championName
+            ? `<button type="button" class="screen__button bracket__leave-champion" data-leave-champion>${t('tournament.bracket.leaveChampion')}</button>`
+            : ''
+        }
       </div>
     `;
 

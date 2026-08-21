@@ -114,6 +114,7 @@
   "tournament.bracket.walkover": "W.O.",
   "tournament.bracket.tbd": "A definir",
   "tournament.bracket.back": "Voltar",
+  "tournament.bracket.leaveChampion": "Sair do campeonato",
 
   "hud.kickoffIn": "Kickoff em {seconds}s",
   "hud.goal": "GOL!",
