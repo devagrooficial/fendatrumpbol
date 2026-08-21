@@ -238,7 +238,13 @@ class Room {
       this.commands[id] = NEUTRAL_COMMAND;
       const ws = humanSockets[id];
       if (ws) {
-        send(ws, { type: 'assigned', playerId: id, names, colors, voiceRoomId: `futtrool-${this.id}` });
+        // 1v1 (teamSize 1): sala única, os dois lados conversam entre si
+        // (não tem "time" pra proteger). 2v2/3v3: sala POR TIME — quem tá
+        // no teamA nunca cai na mesma sala do teamB, só dá pra falar com
+        // quem joga junto (pedido explícito: adversário não pode ouvir a
+        // estratégia do time).
+        const voiceRoomId = this.teamSize > 1 ? `futtrool-${this.id}-${id.startsWith('teamA') ? 'teamA' : 'teamB'}` : `futtrool-${this.id}`;
+        send(ws, { type: 'assigned', playerId: id, names, colors, voiceRoomId });
         // Substitui o listener de 'message' que o pareamento usava (join
         // request) — a partir daqui só interessa 'command'.
         ws.removeAllListeners('message');

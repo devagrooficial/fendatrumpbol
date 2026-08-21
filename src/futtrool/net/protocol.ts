@@ -83,10 +83,11 @@ export type ServerMessage =
   // partida (inclusive quem está recebendo a mensagem) — quem não aparece
   // aqui é bot (o cliente gera apelido fictício e mantém a cor do time pra
   // esses, ver ui/botNames.ts e render/theme.ts). `voiceRoomId` é o nome da
-  // sala de voz (Jitsi, ver src/futtrool/voice/) dessa partida — igual pra
-  // todo mundo nela (o próprio roomId interno da Room, ver
-  // server/src/index.ts), então basta todo mundo entrar na mesma sala de
-  // voz sem precisar de nenhuma outra combinação entre cliente e servidor.
+  // sala de voz (Jitsi, ver src/futtrool/voice/) — em 1v1 é igual pra
+  // quem está na partida (só dá pra falar com o adversário mesmo); em
+  // 2v2/3v3 é POR TIME (teamA e teamB recebem valores diferentes), então
+  // só dá pra falar com quem joga junto, nunca com o adversário — ver
+  // server/src/index.ts (Room constructor).
   | { type: 'assigned'; playerId: PlayerId; names: Record<PlayerId, string>; colors: Record<PlayerId, AvatarColor>; voiceRoomId: string }
   | { type: 'roomCreated'; code: string }
   | { type: 'roomNotFound' }

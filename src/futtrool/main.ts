@@ -365,10 +365,20 @@ function stopMatchVoice(): void {
   matchVoiceHud.hide();
 }
 
+// 1v1 (roster.teamA tem 1 slot): não tem "time" pra proteger, então o
+// grupo relevante é TODO MUNDO na partida (o adversário é com quem dá
+// pra falar). 2v2/3v3: o grupo relevante é só MEU TIME — o servidor já
+// manda um voiceRoomId por time nesse caso (ver 'assigned' em
+// protocol.ts/server/src/index.ts), então juntar todo mundo aqui do lado
+// do cliente ia só mostrar gente que nem cai na mesma sala.
 function startVoiceIfAccompanied(voiceRoomId: string): void {
-  if (Object.keys(humanNames).length <= 1) return;
+  const isTeamMatch = state.roster.teamA.length > 1;
+  const myTeam = teamOf(localPlayerId);
+  const relevantIds = (Object.keys(humanNames) as PlayerId[]).filter((id) => !isTeamMatch || teamOf(id) === myTeam);
+  if (relevantIds.length <= 1) return;
+
   startVoice(voiceRoomId, displayName);
-  const players = (Object.keys(humanNames) as PlayerId[]).map((id) => ({
+  const players = relevantIds.map((id) => ({
     name: id === localPlayerId ? displayName : (humanNames[id] ?? id),
     isYou: id === localPlayerId,
   }));
