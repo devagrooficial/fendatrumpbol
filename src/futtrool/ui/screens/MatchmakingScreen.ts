@@ -136,6 +136,7 @@ export class MatchmakingScreen {
   showOnline(): void {
     this.subtitleEl.textContent = t('matchmaking.online.subtitle');
     this.root.classList.add('screen--visible');
+    this.root.classList.remove('screen--corner'); // reseta — main.ts liga de novo se for 2v2/3v3
     this.roomInfoEl.hidden = true;
     this.lobbyStatusEl.textContent = '';
     this.startNowButton.hidden = true;
@@ -157,6 +158,18 @@ export class MatchmakingScreen {
     const total = filled.teamA + filled.teamB;
     this.lobbyStatusEl.textContent = t('matchmaking.online.lobbyStatus', { filled: total, capacity });
     this.startNowButton.hidden = teamSize <= 1;
+  }
+
+  // 2v2/3v3: enquanto espera o resto da galera, o campo mostra um
+  // ambiente de treino (ver main.ts updatePracticeMode/renderPracticeMode)
+  // por baixo dessa tela — sem isso o painel cheio e escurecido (mesmo
+  // .screen usado em todo o resto do app) cobriria o campo inteiro,
+  // inutilizando o treino. Encolhe o painel pro rodapé e tira o fundo
+  // escuro, deixando o resto clicável/tocável passar direto (ver
+  // .screen--corner). 1v1 nunca chama isso (não tem treino nesse modo,
+  // ver connectOnline).
+  setPracticeMode(active: boolean): void {
+    this.root.classList.toggle('screen--corner', active);
   }
 
   // Sala privada (convite por link/código) — mesma tela de espera, mas com

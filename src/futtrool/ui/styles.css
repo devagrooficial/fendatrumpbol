@@ -142,6 +142,36 @@ html, body {
   color: #fdf6ff;
 }
 
+/* Espera de 2v2/3v3 com ambiente de treino atrás (ver
+   MatchmakingScreen.setPracticeMode / main.ts updatePracticeMode) — some
+   com o fundo escurecido de tela cheia e encolhe/desce o painel pro
+   rodapé, deixando o campo visível e jogável por trás. O root fica
+   click-through (pointer-events:none) pra não bloquear o toque no
+   joystick/campo; só o painel em si continua clicável. */
+.screen--corner {
+  align-items: flex-end;
+  background: transparent;
+  padding: 0 1rem 1.2rem;
+  pointer-events: none;
+}
+
+/* Título/anúncio/spinner/contador só inflam a altura do card sem ajudar
+   em nada — quem tá jogando o treino já sabe que está esperando, só
+   precisa do status ("2 de 4 jogadores") e dos botões. */
+.screen--corner .screen__title,
+.screen--corner .matchmaking-spinner,
+.screen--corner .matchmaking-countdown,
+.screen--corner .ad-slot--loading-hero {
+  display: none;
+}
+
+.screen--corner .screen__panel {
+  width: min(22rem, 100%);
+  padding: 1rem 1.25rem;
+  background: rgba(20, 20, 26, 0.94);
+  pointer-events: auto;
+}
+
 /* Menu principal: tela cheia de verdade (não um modal flutuando sobre o
    campo) — cabeçalho fixo, lista de botões rolável no meio, rodapé fixo
    com o espaço de anúncio 728x90. */

@@ -257,6 +257,78 @@ let state: GameState = createMatchState(1, MATCH.KICKOFF_COUNTDOWN_MS, SOLO_ROST
 let aiState: AiState = createAiState(Date.now());
 let prevPhase = state.phase;
 
+// Ambiente de treino (2v2/3v3, ver connectOnline/onLobbyUpdate mais
+// abaixo): só eu e a bola, sem adversário nenhum — pra ter alguém pra
+// jogar contra bastaria copiar SOLO_ROSTER, mas o pedido foi
+// especificamente treinar sozinho contra o gol vazio. goalsToWin/
+// durationMs gigantes de propósito: sem isso o motor de partida (mesmo
+// core/simulation.ts de qualquer partida de verdade) declarava fim de
+// jogo no primeiro gol ou quando o tempo acabasse — aqui não tem "fim",
+// só o ciclo natural de kickoff que já roda sozinho depois de cada gol
+// (congelamento + replay + kickoff de novo, sem eu precisar reimplementar
+// nada disso à mão). Existe só enquanto `appScreen === 'onlineMatchmaking'`
+// (ver update()/render() e stopPracticeMode em hideAllScreens).
+const PRACTICE_ROSTER: Record<TeamId, PlayerId[]> = { teamA: ['teamA-0'], teamB: [] };
+const PRACTICE_SETTINGS: MatchSettings = { durationMs: Number.MAX_SAFE_INTEGER, goalsToWin: Number.MAX_SAFE_INTEGER };
+let practiceState: GameState | null = null;
+
+function startPracticeMode(): void {
+  if (practiceState) return; // já rodando (ver os dois lugares que chamam isso)
+  practiceState = createMatchState(Date.now(), MATCH.KICKOFF_COUNTDOWN_MS, PRACTICE_ROSTER, PRACTICE_SETTINGS);
+  matchmakingScreen.setPracticeMode(true);
+}
+
+function stopPracticeMode(): void {
+  practiceState = null;
+  matchmakingScreen.setPracticeMode(false);
+}
+
+function updatePracticeMode(dt: number): void {
+  if (!practiceState) return;
+  const command = getP1Command(practiceState.tick);
+  const commands = { 'teamA-0': command } as Record<PlayerId, Command>;
+  const result = step(practiceState, commands, dt);
+  practiceState = result.state;
+
+  const player = practiceState.players['teamA-0']!;
+  camera.follow(practiceState.ball.pos, player.pos, [player.pos]);
+  fx.updateBallSpin(Math.hypot(practiceState.ball.vel.x, practiceState.ball.vel.y), practiceState.ball.radius, dt);
+  fx.update(dt);
+
+  for (const event of result.events) {
+    switch (event.type) {
+      case 'kick':
+        Audio.kick(event.charge);
+        fx.spawnKickParticles(event.pos, event.dir, event.charge);
+        fx.triggerKickPulse();
+        break;
+      case 'dash':
+        Audio.dash();
+        break;
+      case 'ballWallBounce':
+        Audio.ballWallBounce();
+        break;
+      case 'goal':
+        Audio.goal();
+        fx.triggerGoal();
+        break;
+      default:
+        break;
+    }
+  }
+}
+
+function renderPracticeMode(): void {
+  if (!practiceState) return;
+  renderBallTrail(ctx, camera, fx.getBallTrail(), practiceState.ball.radius, Math.hypot(practiceState.ball.vel.x, practiceState.ball.vel.y));
+  const player = practiceState.players['teamA-0']!;
+  renderPlayer(ctx, camera, player, avatarColor);
+  renderBallWithSkin(practiceState.ball);
+  renderParticles(ctx, camera, fx.getParticles());
+  renderGoalFlash(ctx, window.innerWidth, window.innerHeight, fx.getFlashAlpha());
+  if (touch) renderTouchControls(ctx, touch.getLayout(), touch.joystickVisual, player.kickCharge, player.boostStamina);
+}
+
 function hideAllScreens(): void {
   menuScreen.hide();
   difficultyScreen.hide();
@@ -269,6 +341,7 @@ function hideAllScreens(): void {
   tournamentSetupScreen.hide();
   tournamentWaitingScreen.hide();
   tournamentBracketScreen.hide();
+  stopPracticeMode();
 }
 
 function goToMenu(): void {
@@ -455,6 +528,11 @@ async function connectOnline(mode: OnlineJoinMode): Promise<void> {
   appScreen = 'onlineMatchmaking';
   hideAllScreens();
   matchmakingScreen.showOnline();
+  // 2v2/3v3: já sei o teamSize de cara (quickMatch/createRoom escolhem
+  // antes de conectar) — liga o treino na hora, sem esperar mais nada.
+  // joinRoom só descobre o teamSize da sala quando o servidor manda o
+  // primeiro 'lobbyUpdate' (ver onLobbyUpdate abaixo).
+  if (mode.kind !== 'joinRoom' && mode.teamSize > 1) startPracticeMode();
 
   // Sessão atual (se estiver logado) — o servidor usa isso pra confirmar
   // de verdade quem está entrando (banimento + painel de admin, ver
@@ -489,6 +567,7 @@ async function connectOnline(mode: OnlineJoinMode): Promise<void> {
     },
     onLobbyUpdate: (teamSize, filled, capacity) => {
       matchmakingScreen.setLobbyStatus(teamSize, filled, capacity);
+      if (teamSize > 1) startPracticeMode(); // cobre joinRoom, que só sabe o teamSize aqui
     },
     onState: (newState, events) => {
       if (!matchStarted) {
@@ -1096,6 +1175,10 @@ function update(dt: number): void {
     updateWatchingReplay(dt);
     return;
   }
+  if (appScreen === 'onlineMatchmaking') {
+    updatePracticeMode(dt);
+    return;
+  }
   if (appScreen !== 'match') return;
   updateMatch(dt);
 }
@@ -1148,6 +1231,11 @@ function render(_alpha: number): void {
     adManager.renderFieldSlots(ctx, camera);
     const snapshot = replayPlayer.getCurrentSnapshot();
     if (snapshot) renderReplaySnapshot(snapshot);
+    return;
+  }
+
+  if (appScreen === 'onlineMatchmaking') {
+    renderPracticeMode();
     return;
   }
 
