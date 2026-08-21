@@ -1108,6 +1108,14 @@ html, body {
    puro, sem SVG) — cada `.bracket__pair` puxa uma linha em L da metade
    da altura dela até a borda do card seguinte. */
 .tournament-bracket-main {
+  /* Sem isso, herda o `width: min(28rem, 100%)` de .menu-screen__main
+     (pensado pra tela de menu com botão empilhado) — o bracket com 3
+     rodadas lado a lado quer bem mais que 28rem (ver .bracket min-width
+     abaixo), então ficava cortado mesmo tendo overflow-x. Largura cheia
+     aqui deixa a rolagem horizontal (se precisar, em tela estreita)
+     controlada só pelo tamanho de verdade do conteúdo. */
+  width: 100%;
+  max-width: none;
   overflow-x: auto;
   padding: 1.5rem 0.5rem;
 }

@@ -209,6 +209,14 @@ class Room {
   private readonly closeListeners = new Map<WebSocket, () => void>();
   private readonly closeSocketsOnEnd: boolean;
   private readonly onEnded: (info: RoomEndInfo) => void;
+  // Só usado pelo campeonato (ver startTournamentMatch) — quickMatch/sala
+  // não passa isso, ninguém além de quem já está NA partida acompanha o
+  // placar dela em tempo real. Chamado só quando o placar muda de
+  // verdade (evento 'goal'), nunca a cada tick — pra quem está só
+  // olhando o bracket (ver TournamentBracketScreen) ver o placar "AO
+  // VIVO" se atualizando sem precisar ficar re-emitindo a partida
+  // inteira 60x/segundo pra gente que nem está jogando ela.
+  private readonly onGoal?: (score: Record<TeamId, number>) => void;
   private ended = false;
 
   constructor(
@@ -221,6 +229,7 @@ class Room {
     matchSettings: MatchSettings,
     closeSocketsOnEnd: boolean,
     onEnded: (info: RoomEndInfo) => void,
+    onGoal?: (score: Record<TeamId, number>) => void,
   ) {
     this.id = id;
     this.humanSockets = humanSockets;
@@ -229,6 +238,7 @@ class Room {
     this.teamSize = roster.teamA.length;
     this.closeSocketsOnEnd = closeSocketsOnEnd;
     this.onEnded = onEnded;
+    this.onGoal = onGoal;
     this.state = createMatchState(Date.now(), MATCH.KICKOFF_COUNTDOWN_MS, roster, matchSettings);
 
     const allIds = [...roster.teamA, ...roster.teamB];
@@ -291,6 +301,8 @@ class Room {
     const message: ServerMessage = { type: 'state', state: this.state, events: result.events };
     for (const ws of this.allHumanSockets()) send(ws, message);
     for (const ws of this.spectators) send(ws, message);
+
+    if (this.onGoal && result.events.some((e) => e.type === 'goal')) this.onGoal(this.state.score);
 
     if (this.state.phase === 'ended') {
       this.stop({ reason: 'completed', result: this.state.result!, score: this.state.score });
@@ -827,10 +839,29 @@ function startTournamentMatch(t: Tournament, match: TournamentMatch): void {
   });
 
   const roomId = randomUUID();
-  const room = new Room(roomId, roster, humanSockets, names, colors, emails, TOURNAMENT_MATCH_SETTINGS, false, (info) => {
-    rooms.delete(roomId);
-    handleTournamentMatchEnded(t, match, info);
-  });
+  const room = new Room(
+    roomId,
+    roster,
+    humanSockets,
+    names,
+    colors,
+    emails,
+    TOURNAMENT_MATCH_SETTINGS,
+    false,
+    (info) => {
+      rooms.delete(roomId);
+      handleTournamentMatchEnded(t, match, info);
+    },
+    // Placar "AO VIVO" no bracket (ver TournamentBracketScreen) — sem
+    // isso, quem só está OLHANDO a chave (não jogando essa partida) via
+    // 'tournament' snapshot só vê o placar mudar quando a partida termina
+    // de vez, mesmo com o card já marcado "AO VIVO" antes disso.
+    (score) => {
+      match.scoreA = score.teamA;
+      match.scoreB = score.teamB;
+      broadcastTournament(t);
+    },
+  );
   rooms.set(roomId, room);
   match.room = room;
 }
