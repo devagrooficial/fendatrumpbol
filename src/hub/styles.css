@@ -19,9 +19,14 @@ html, body {
   gap: 2.5rem;
   padding: 2rem 1.5rem;
   text-align: center;
+  /* Foto do estádio (public/images/fundo.jpeg) com um gradiente linear
+     por cima: escuro embaixo (garante contraste pros cards) clareando/
+     ficando transparente pra cima (deixa a foto respirar perto do
+     título) — mesma camada dupla de sempre (gradiente primeiro, imagem
+     depois), só que agora com foto de verdade no lugar dos radiais. */
   background:
-    radial-gradient(ellipse at 30% 20%, rgba(47, 107, 255, 0.18), transparent 60%),
-    radial-gradient(ellipse at 75% 80%, rgba(255, 168, 61, 0.14), transparent 55%);
+    linear-gradient(to top, rgba(10, 4, 20, 0.95) 0%, rgba(10, 4, 20, 0.55) 45%, rgba(10, 4, 20, 0.1) 100%),
+    url('/images/fundo.jpeg') center 35% / cover no-repeat;
 }
 
 .hub__title {
@@ -121,8 +126,32 @@ html, body {
   background: #ffa83d;
 }
 
+/* Jogo principal — maior que os outros dois, com a arte de verdade do
+   jogo (public/images/imgfuttrool.JPG) como fundo em vez do ícone
+   genérico. Mesma técnica do .hub: gradiente escuro embaixo (garante
+   contraste pro título/descrição/botão) clareando pra cima, onde a
+   própria arte (que já traz a logo "FutTrool") fica visível sem nada
+   por cima atrapalhando. */
+.game-card--futtrool {
+  width: 260px;
+  min-height: 320px;
+  justify-content: flex-end;
+  background:
+    linear-gradient(to top, rgba(10, 4, 20, 0.95) 0%, rgba(10, 4, 20, 0.45) 55%, rgba(10, 4, 20, 0.05) 100%),
+    url('/images/imgfuttrool.JPG') center / cover no-repeat;
+  border-color: rgba(233, 61, 130, 0.45);
+}
+
+.game-card--futtrool:hover {
+  border-color: rgba(233, 61, 130, 0.8);
+  box-shadow: 0 10px 30px rgba(233, 61, 130, 0.25);
+}
+
+/* A própria arte já traz a bola/identidade visual — o ícone genérico
+   (mesma silhueta de bola usada como placeholder nos outros jogos) só
+   duplicava informação por cima de uma imagem já carregada. */
 .game-card--futtrool .game-card__icon {
-  color: #4cae50;
+  display: none;
 }
 
 .game-card--futtrool .game-card__play {
