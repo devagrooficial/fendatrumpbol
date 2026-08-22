@@ -15,9 +15,13 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  /* Era `center` — numa tela baixa/larga isso empurra o título pra
+     bem longe do topo de verdade (o bloco inteiro centraliza no
+     viewport). `flex-start` fixa o título sempre no topo, o resto flui
+     abaixo (rola a página se não couber, html/body não bloqueia scroll). */
+  justify-content: flex-start;
   gap: 2.5rem;
-  padding: 2rem 1.5rem;
+  padding: 2rem 1.5rem 3rem;
   text-align: center;
   /* Foto do estádio (public/images/fundo.jpeg) com um gradiente linear
      colorido por cima (roxo/magenta puxando pro azul da marca, não só
@@ -38,16 +42,32 @@ html, body {
 
 .hub__title {
   margin: 0;
+  padding: 0.5rem 1.4rem;
   font-size: 2.2rem;
   font-weight: 800;
-  color: #2f6bff;
-  text-shadow: 0 0 16px rgba(47, 107, 255, 0.6);
+  color: #fdf6ff;
+  /* Contraste GARANTIDO contra qualquer parte da foto (céu claro, luz de
+     estádio, o que for) — antes era só um brilho azul (mesma família de
+     cor do céu ao fundo, sumia). Sombra escura em camadas simula um
+     contorno sólido em vez de depender do gradiente (que já é claro/
+     transparente bem ali em cima, de propósito, pra foto respirar). */
+  text-shadow:
+    0 2px 3px rgba(5, 2, 12, 0.95),
+    0 0 10px rgba(5, 2, 12, 0.9),
+    0 0 28px rgba(5, 2, 12, 0.75);
+  background: rgba(8, 3, 18, 0.4);
+  border-radius: 999px;
+  backdrop-filter: blur(3px);
 }
 
 .hub__greeting {
   margin: -1.5rem 0 0;
+  padding: 0.2rem 1rem;
+  border-radius: 999px;
+  background: rgba(8, 3, 18, 0.35);
+  text-shadow: 0 1px 4px rgba(5, 2, 12, 0.9);
   font-size: 0.9rem;
-  color: rgba(253, 246, 255, 0.6);
+  color: rgba(253, 246, 255, 0.85);
 }
 
 .hub__logout {
