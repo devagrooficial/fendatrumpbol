@@ -181,7 +181,21 @@ html, body {
   z-index: 20;
   display: flex;
   flex-direction: column;
-  background: #0b0b0e;
+  /* Mesma foto do hub (public/images/fundo.jpeg), mas com o gradiente
+     BEM mais forte/opaco que lá — essa tela tem card/ícone/texto do
+     início ao fim (não só um título no topo), então precisa de
+     contraste forte na altura INTEIRA, não só numa faixa embaixo.
+     `.menu-screen` é `position:fixed` (não rola — só `.menu-screen__scroll`
+     dentro dela rola), então o fundo fica parado no lugar o tempo todo. */
+  background:
+    linear-gradient(
+      180deg,
+      rgba(12, 4, 24, 0.95) 0%,
+      rgba(46, 12, 64, 0.9) 30%,
+      rgba(90, 20, 100, 0.84) 60%,
+      rgba(12, 4, 24, 0.96) 100%
+    ),
+    url('/images/fundo.jpeg') center 30% / cover no-repeat;
   color: #fdf6ff;
   opacity: 0;
   pointer-events: none;
