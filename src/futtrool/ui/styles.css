@@ -200,7 +200,10 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 2.5rem 1.5rem 1.5rem;
+  /* Sem rodapé de anúncio mais (ver menu-screen__footer, removido) —
+     reservei o respiro que ele dava direto aqui embaixo, incluindo a
+     faixa seguro do notch/home indicator do iPhone. */
+  padding: 2.5rem 1.5rem calc(2rem + env(safe-area-inset-bottom, 0px));
 }
 
 .menu-screen__header {
@@ -223,16 +226,240 @@ html, body {
 .menu-screen__main {
   display: flex;
   flex-direction: column;
-  gap: 0.9rem;
-  width: min(28rem, 100%);
+  gap: 1.6rem;
+  width: min(30rem, 100%);
 }
 
-.menu-screen__footer {
-  flex-shrink: 0;
+/* ---------------------------------------------------------------------
+   Menu principal (MenuScreen) — badges de nível/moedas, CTA de destaque,
+   e as duas grades (multiplayer por tamanho de time, "mais" opções) que
+   substituem a pilha de botões cinza idênticos de antes.
+   --------------------------------------------------------------------- */
+
+.menu-stat-row {
   display: flex;
   justify-content: center;
-  padding: 0.6rem 1rem calc(0.6rem + env(safe-area-inset-bottom, 0px));
-  background: rgba(20, 20, 26, 0.7);
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+}
+
+.menu-stat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #fdf6ff;
+  background: rgba(253, 246, 255, 0.08);
+  border: 1px solid rgba(253, 246, 255, 0.15);
+  border-radius: 999px;
+}
+
+.menu-stat-badge__icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: #ffd166;
+}
+
+.menu-stat-badge--coins {
+  color: #ffd166;
+  border-color: rgba(255, 209, 102, 0.3);
+}
+
+.menu-cta {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  width: 100%;
+  padding: 1rem 1.4rem;
+  text-align: left;
+  color: #0b0b0e;
+  background: linear-gradient(135deg, #e93d82, #f5765f);
+  border: none;
+  border-radius: 1.25rem;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(233, 61, 130, 0.35);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.menu-cta:hover {
+  transform: scale(1.015);
+  box-shadow: 0 14px 30px rgba(233, 61, 130, 0.45);
+}
+
+.menu-cta__icon {
+  flex-shrink: 0;
+  width: 2.75rem;
+  height: 2.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(11, 11, 14, 0.15);
+  border-radius: 50%;
+}
+
+.menu-cta__icon svg {
+  width: 1.4rem;
+  height: 1.4rem;
+}
+
+.menu-cta__text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.menu-cta__title {
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+
+.menu-cta__subtitle {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: rgba(11, 11, 14, 0.65);
+}
+
+.menu-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  text-align: left;
+}
+
+.menu-section__title {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: rgba(253, 246, 255, 0.45);
+}
+
+.menu-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
+}
+
+.menu-mode-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.9rem 0.5rem;
+  background: rgba(253, 246, 255, 0.05);
+  border: 1px solid rgba(253, 246, 255, 0.12);
+  border-radius: 1rem;
+}
+
+.menu-mode-card__badge {
+  padding: 0.25rem 0.7rem;
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #0b0b0e;
+  border-radius: 999px;
+}
+
+.menu-mode-card--blue .menu-mode-card__badge {
+  background: #2f6bff;
+}
+
+.menu-mode-card--orange .menu-mode-card__badge {
+  background: #ffa83d;
+}
+
+.menu-mode-card--green .menu-mode-card__badge {
+  background: #4ade80;
+}
+
+.menu-mode-card__action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 0.45rem 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fdf6ff;
+  background: rgba(253, 246, 255, 0.08);
+  border: 1px solid rgba(253, 246, 255, 0.18);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.menu-mode-card__action:hover {
+  background: rgba(253, 246, 255, 0.16);
+}
+
+.menu-mode-card--blue .menu-mode-card__action--primary {
+  color: #0b0b0e;
+  background: #2f6bff;
+  border-color: transparent;
+}
+
+.menu-mode-card--orange .menu-mode-card__action--primary {
+  color: #0b0b0e;
+  background: #ffa83d;
+  border-color: transparent;
+}
+
+.menu-mode-card--green .menu-mode-card__action--primary {
+  color: #0b0b0e;
+  background: #4ade80;
+  border-color: transparent;
+}
+
+.menu-mode-card__icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.menu-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
+}
+
+.menu-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 0.5rem;
+  color: #fdf6ff;
+  background: rgba(253, 246, 255, 0.05);
+  border: 1px solid rgba(253, 246, 255, 0.12);
+  border-radius: 1rem;
+  cursor: pointer;
+  text-align: center;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.menu-tile:hover {
+  background: rgba(253, 246, 255, 0.1);
+  border-color: rgba(253, 246, 255, 0.25);
+}
+
+.menu-tile__icon {
+  width: 1.6rem;
+  height: 1.6rem;
+  color: #e93d82;
+}
+
+.menu-tile__label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.menu-section--settings {
+  gap: 0.9rem;
+  padding-top: 0.6rem;
   border-top: 1px solid rgba(253, 246, 255, 0.08);
 }
 
@@ -704,12 +931,6 @@ html, body {
   border-radius: 0.8rem;
   cursor: pointer;
   object-fit: contain;
-}
-
-.ad-slot--menu-footer {
-  width: 100%;
-  max-width: 728px;
-  aspect-ratio: 728 / 90;
 }
 
 .ad-slot--loading-hero {

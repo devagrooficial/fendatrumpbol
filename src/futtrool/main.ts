@@ -1036,7 +1036,6 @@ adsConfigPromise
   .then((config) => {
     adManager.load(config);
     if (appScreen === 'matchmaking') matchmakingScreen.refreshAd();
-    if (appScreen === 'menu') menuScreen.refreshAd();
   })
   .catch((err) => {
     if (import.meta.env.DEV) console.error('[futtrool] falha ao carregar ads.config.json', err);

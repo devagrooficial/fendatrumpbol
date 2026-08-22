@@ -4,7 +4,57 @@ import type { ProgressionState } from '../../progression/storage';
 import { isFullscreenActive, isFullscreenSupported, toggleFullscreen } from '../../fullscreen';
 import { supabase } from '../../../auth/supabaseClient';
 import { APELIDO_MAX_LENGTH, APELIDO_MIN_LENGTH, getApelido, setApelido } from '../../../auth/profile';
-import { createAdSlotImg, hideAdSlot, showAdSlot } from '../adSlot';
+
+// Ícones (mesmo estilo simples/traço único do hub, ver src/hub/main.ts) —
+// só pra dar apoio visual às seções, não precisa de biblioteca externa
+// pra 24x24 hand-drawn.
+const ICON_PLAY = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7-11-7z"/></svg>';
+const ICON_ONLINE =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 8.5a15 15 0 0 1 20 0"/><path d="M5.5 12a10 10 0 0 1 13 0"/><path d="M9 15.5a5 5 0 0 1 6 0"/><circle cx="12" cy="19" r="1.1" fill="currentColor" stroke="none"/></svg>';
+const ICON_INVITE =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c0-3.3 2.5-5.5 5.5-5.5s5.5 2.2 5.5 5.5"/><path d="M18 8v5M15.5 10.5h5"/></svg>';
+const ICON_INVENTORY =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8l9-4 9 4-9 4-9-4z"/><path d="M3 8v8l9 4 9-4V8"/><path d="M12 12v8"/></svg>';
+const ICON_SHOP =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h16l-1.5 10a2 2 0 0 1-2 1.7H7.5a2 2 0 0 1-2-1.7L4 8z"/><path d="M8 8V6a4 4 0 0 1 8 0v2"/></svg>';
+const ICON_REPLAY =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 8v4l3 2"/></svg>';
+const ICON_TIMER =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2"/><path d="M9 2h6"/></svg>';
+const ICON_PALETTE =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18c1.2 0 2-.9 2-2 0-.6-.2-1-.5-1.4-.3-.4-.5-.8-.5-1.3 0-1 .8-1.8 1.8-1.8H17a4 4 0 0 0 4-4c0-4.4-4-7.5-9-7.5z"/><circle cx="7.5" cy="10.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="10.5" cy="7" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="7.5" r="1.1" fill="currentColor" stroke="none"/></svg>';
+const ICON_TROPHY =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M7 5H4a3 3 0 0 0 3 4M17 5h3a3 3 0 0 1-3 4"/><path d="M12 14v3M9 20h6M10 17h4v3h-4z"/></svg>';
+const ICON_STAR = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.1 6.6L12 17.5 6.2 20.6l1.1-6.6-4.8-4.6 6.6-.9L12 2.5z"/></svg>';
+const ICON_COIN =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 7v10M9.5 9.3c0-1.1 1-2 2.5-2s2.5.7 2.5 1.8-1 1.6-2.5 1.9-2.5.8-2.5 1.9 1 1.8 2.5 1.8 2.5-.9 2.5-2"/></svg>';
+
+// Uma vaga (1v1/2v2/3v3) do multiplayer — mesmas duas ações de sempre
+// (entrar na fila pública ou convidar amigo por link), só que agora
+// agrupadas visualmente por tamanho de time em vez de 6 pills soltas
+// idênticas empilhadas.
+function modeCardHtml(teamSize: number, modifier: string): string {
+  return `
+    <div class="menu-mode-card menu-mode-card--${modifier}">
+      <span class="menu-mode-card__badge">${teamSize}v${teamSize}</span>
+      <button type="button" class="menu-mode-card__action menu-mode-card__action--primary" data-play-online="${teamSize}">
+        <span class="menu-mode-card__icon">${ICON_ONLINE}</span>${t('menu.online')}
+      </button>
+      <button type="button" class="menu-mode-card__action" data-invite-friend="${teamSize}">
+        <span class="menu-mode-card__icon">${ICON_INVITE}</span>${t('menu.inviteFriend')}
+      </button>
+    </div>
+  `;
+}
+
+function menuTileHtml(dataAttr: string, icon: string, label: string): string {
+  return `
+    <button type="button" class="menu-tile" data-${dataAttr}>
+      <span class="menu-tile__icon">${icon}</span>
+      <span class="menu-tile__label">${label}</span>
+    </button>
+  `;
+}
 
 export class MenuScreen {
   private readonly root: HTMLDivElement;
@@ -16,7 +66,6 @@ export class MenuScreen {
   private readonly nicknameInput: HTMLInputElement;
   private readonly nicknameSaveButton: HTMLButtonElement;
   private readonly nicknameStatus: HTMLParagraphElement;
-  private readonly footerAd: HTMLImageElement;
 
   constructor(
     onPlay: () => void,
@@ -35,67 +84,69 @@ export class MenuScreen {
         <header class="menu-screen__header">
           <h1 class="menu-screen__title">${t('menu.title')}</h1>
           <p class="menu-screen__subtitle">${t('menu.subtitle')}</p>
-          <div class="screen__stat-row">
-            <span class="screen__stat-pill" data-level></span>
-            <span class="screen__stat-pill screen__stat-pill--coins" data-coins></span>
+          <div class="menu-stat-row">
+            <span class="menu-stat-badge" data-level><span class="menu-stat-badge__icon">${ICON_STAR}</span></span>
+            <span class="menu-stat-badge menu-stat-badge--coins" data-coins><span class="menu-stat-badge__icon">${ICON_COIN}</span></span>
           </div>
         </header>
         <main class="menu-screen__main">
-          <button type="button" class="screen__button" data-play>${t('menu.play')}</button>
-          <div class="screen__button-row">
-            <button type="button" class="screen__button screen__button--secondary" data-play-online="1">${t('menu.playOnline1v1')}</button>
-            <button type="button" class="screen__button screen__button--secondary" data-invite-friend="1">${t('menu.inviteFriend1v1')}</button>
-          </div>
-          <div class="screen__button-row">
-            <button type="button" class="screen__button screen__button--secondary" data-play-online="2">${t('menu.playOnline2v2')}</button>
-            <button type="button" class="screen__button screen__button--secondary" data-invite-friend="2">${t('menu.inviteFriend2v2')}</button>
-          </div>
-          <div class="screen__button-row">
-            <button type="button" class="screen__button screen__button--secondary" data-play-online="3">${t('menu.playOnline3v3')}</button>
-            <button type="button" class="screen__button screen__button--secondary" data-invite-friend="3">${t('menu.inviteFriend3v3')}</button>
-          </div>
-          <div class="screen__button-row">
-            <button type="button" class="screen__button screen__button--secondary" data-inventory>${t('menu.inventory')}</button>
-            <button type="button" class="screen__button screen__button--secondary" data-shop>${t('menu.shop')}</button>
-          </div>
-          <div class="screen__button-row">
-            <button type="button" class="screen__button screen__button--secondary" data-replays>${t('menu.replays')}</button>
-            <button type="button" class="screen__button screen__button--secondary" data-match-settings>${t('menu.matchSettings')}</button>
-          </div>
-          <div class="screen__button-row">
-            <button type="button" class="screen__button screen__button--secondary" data-avatar-color>${t('menu.avatarColor')}</button>
-            <button type="button" class="screen__button screen__button--secondary" data-tournament>${t('menu.tournament')}</button>
-          </div>
-          <p class="screen__placeholder-note" data-placeholder-note></p>
-          <div class="screen__field">
-            <label class="screen__field-label" for="futtrool-nickname">${t('menu.nickname.label')}</label>
-            <div class="screen__field-row">
-              <input
-                id="futtrool-nickname"
-                type="text"
-                class="screen__input"
-                data-nickname-input
-                maxlength="${APELIDO_MAX_LENGTH}"
-                minlength="${APELIDO_MIN_LENGTH}"
-                placeholder="${t('menu.nickname.placeholder')}"
-              />
-              <button type="button" class="screen__button screen__button--secondary" data-nickname-save>${t('menu.nickname.save')}</button>
+          <button type="button" class="menu-cta" data-play>
+            <span class="menu-cta__icon">${ICON_PLAY}</span>
+            <span class="menu-cta__text">
+              <span class="menu-cta__title">${t('menu.play')}</span>
+              <span class="menu-cta__subtitle">${t('menu.playSubtitle')}</span>
+            </span>
+          </button>
+
+          <section class="menu-section">
+            <h2 class="menu-section__title">${t('menu.section.multiplayer')}</h2>
+            <div class="menu-mode-grid">
+              ${modeCardHtml(1, 'blue')}
+              ${modeCardHtml(2, 'orange')}
+              ${modeCardHtml(3, 'green')}
             </div>
-            <p class="screen__placeholder-note" data-nickname-status></p>
-          </div>
-          <div class="screen__button-row">
-            <button type="button" class="screen__toggle" data-sound></button>
-            <button type="button" class="screen__toggle" data-fullscreen></button>
-          </div>
+          </section>
+
+          <section class="menu-section">
+            <h2 class="menu-section__title">${t('menu.section.more')}</h2>
+            <div class="menu-tile-grid">
+              ${menuTileHtml('tournament', ICON_TROPHY, t('menu.tournament'))}
+              ${menuTileHtml('inventory', ICON_INVENTORY, t('menu.inventory'))}
+              ${menuTileHtml('shop', ICON_SHOP, t('menu.shop'))}
+              ${menuTileHtml('replays', ICON_REPLAY, t('menu.replays'))}
+              ${menuTileHtml('match-settings', ICON_TIMER, t('menu.matchSettings'))}
+              ${menuTileHtml('avatar-color', ICON_PALETTE, t('menu.avatarColor'))}
+            </div>
+          </section>
+
+          <p class="screen__placeholder-note" data-placeholder-note></p>
+
+          <section class="menu-section menu-section--settings">
+            <h2 class="menu-section__title">${t('menu.section.settings')}</h2>
+            <div class="screen__field">
+              <label class="screen__field-label" for="futtrool-nickname">${t('menu.nickname.label')}</label>
+              <div class="screen__field-row">
+                <input
+                  id="futtrool-nickname"
+                  type="text"
+                  class="screen__input"
+                  data-nickname-input
+                  maxlength="${APELIDO_MAX_LENGTH}"
+                  minlength="${APELIDO_MIN_LENGTH}"
+                  placeholder="${t('menu.nickname.placeholder')}"
+                />
+                <button type="button" class="screen__button screen__button--secondary" data-nickname-save>${t('menu.nickname.save')}</button>
+              </div>
+              <p class="screen__placeholder-note" data-nickname-status></p>
+            </div>
+            <div class="screen__button-row">
+              <button type="button" class="screen__toggle" data-sound></button>
+              <button type="button" class="screen__toggle" data-fullscreen></button>
+            </div>
+          </section>
         </main>
       </div>
-      <footer class="menu-screen__footer">
-        <div data-footer-ad-slot></div>
-      </footer>
     `;
-
-    this.footerAd = createAdSlotImg('menu-footer', 'ad-slot ad-slot--menu-footer');
-    this.root.querySelector('[data-footer-ad-slot]')?.replaceWith(this.footerAd);
 
     const levelEl = this.root.querySelector<HTMLSpanElement>('[data-level]');
     const coinsEl = this.root.querySelector<HTMLSpanElement>('[data-coins]');
@@ -309,19 +360,13 @@ export class MenuScreen {
   };
 
   show(progression: ProgressionState): void {
-    this.levelEl.textContent = t('menu.level', { level: progression.level });
-    this.coinsEl.textContent = t('menu.coins', { coins: progression.coins });
+    this.levelEl.innerHTML = `<span class="menu-stat-badge__icon">${ICON_STAR}</span>${t('menu.level', { level: progression.level })}`;
+    this.coinsEl.innerHTML = `<span class="menu-stat-badge__icon">${ICON_COIN}</span>${t('menu.coins', { coins: progression.coins })}`;
     this.root.classList.add('menu-screen--visible');
-    showAdSlot(this.footerAd, 'menu-footer');
     void this.refreshNicknameField();
   }
 
   hide(): void {
     this.root.classList.remove('menu-screen--visible');
-    hideAdSlot('menu-footer');
-  }
-
-  refreshAd(): void {
-    showAdSlot(this.footerAd, 'menu-footer');
   }
 }
