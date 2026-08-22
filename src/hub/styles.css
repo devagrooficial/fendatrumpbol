@@ -93,6 +93,13 @@ html, body {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
+  /* Empurra o grid (e tudo depois dele, ver .hub__credits) pro rodapé —
+     margem automática num item flex consome todo o espaço livre acima
+     dele, sem precisar mexer no `justify-content` do .hub (que
+     continua flex-start só pro título/saudação ficarem presos no topo,
+     ver .hub). Só o TOPO fica reservado pra "logo e identificação";
+     o resto do espaço é a foto respirando até os cards. */
+  margin-top: auto;
   /* `align-items` default é `stretch` — sem sobrescrever isso, os 3
      cards esticavam pra mesma altura do maior (o FutTrool), apagando
      bem a diferença de tamanho que o wireframe pedia. `flex-end` alinha
